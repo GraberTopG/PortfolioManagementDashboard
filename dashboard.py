@@ -1094,13 +1094,14 @@ with tab_corr:
                 yaxis=dict(range=[-1, 1]))
         st.plotly_chart(fig_rc, use_container_width=True)
 
-        with st.expander("Return scatter"):
-            combined = pd.concat([rets_df[t1], rets_df[t2]], axis=1).dropna()
-            fig_sc = px.scatter(combined, x=t1, y=t2, opacity=0.45, trendline="ols",
-                                color_discrete_sequence=[ACCENT],
-                                title=f"Daily Returns Scatter: {t1} vs {t2}")
-            fig_sc.update_layout(template=CHART_TEMPLATE, height=400)
-            st.plotly_chart(fig_sc, use_container_width=True)
+        combined = pd.concat([rets_df[t1], rets_df[t2]], axis=1).dropna()
+        fig_sc = px.scatter(combined, x=t1, y=t2, opacity=0.45, trendline="ols",
+                            color_discrete_sequence=[ACCENT],
+                            title=f"Daily Returns Scatter: {t1} vs {t2}")
+        fig_sc.update_layout(template=CHART_TEMPLATE, height=400,
+                             paper_bgcolor=_BG, plot_bgcolor=_PLOT,
+                             font=dict(family=_FONT, color="#78909C"))
+        st.plotly_chart(fig_sc, use_container_width=True)
     else:
         st.info("Select two different assets.")
 
