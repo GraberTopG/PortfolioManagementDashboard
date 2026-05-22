@@ -1028,7 +1028,6 @@ with st.sidebar:
     start_dt = col1.date_input("Start", value=pd.Timestamp.today() - pd.Timedelta(days=120))
     end_dt   = col2.date_input("End",   value=pd.Timestamp.today())
     st.divider()
-    st.caption("Data: Alpha Vantage · Built on gs_quant concepts")
 
 # ── Auth guard ────────────────────────────────────────────────────────────────
 if not api_key:
