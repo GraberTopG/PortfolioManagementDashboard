@@ -1024,9 +1024,6 @@ with st.sidebar:
         else:
             st.success(f"Total: {total_pct:.1f}%")
 
-    col1, col2 = st.columns(2)
-    start_dt = col1.date_input("Start", value=pd.Timestamp.today() - pd.Timedelta(days=120))
-    end_dt   = col2.date_input("End",   value=pd.Timestamp.today())
     st.divider()
 
 # ── Auth guard ────────────────────────────────────────────────────────────────
@@ -1050,7 +1047,7 @@ if not avail:
     st.error("No data returned. Check your API key and tickers.")
     st.stop()
 
-prices = prices_all[avail].loc[str(start_dt):str(end_dt)]
+prices = prices_all[avail].dropna(how="all")
 
 # ── Fetch benchmark data (SPY + AGG) ─────────────────────────────────────────
 if "bench_prices" not in st.session_state or load_btn:
@@ -1060,7 +1057,7 @@ if "bench_prices" not in st.session_state or load_btn:
 else:
     bench_prices = st.session_state["bench_prices"]
 
-bench_prices = bench_prices.loc[str(start_dt):str(end_dt)] if not bench_prices.empty else bench_prices
+bench_prices = bench_prices.dropna(how="all") if not bench_prices.empty else bench_prices
 st.session_state["data_loaded"] = True
 
 # Slider values are defined inside their tabs but read here first via session state
@@ -1086,7 +1083,8 @@ spy_r    = bench_prices["SPY"].pct_change().dropna() if "SPY" in bench_prices.co
 
 # ── Header ────────────────────────────────────────────────────────────────────
 st.title("Portfolio Management Dashboard")
-st.caption(f"Universe: {', '.join(avail)}  ·  Period: {start_dt} → {end_dt}  ·  "
+st.caption(f"Universe: {', '.join(avail)}  ·  "
+           f"{prices.index[0].strftime('%d %b %Y')} → {prices.index[-1].strftime('%d %b %Y')}  ·  "
            f"{len(prices)} trading days")
 st.divider()
 
