@@ -89,7 +89,13 @@ ALL_TICKERS = [t for group in UNIVERSE.values() for t in group]
 AV_BASE        = "https://www.alphavantage.co/query"
 CACHE_DIR      = os.path.join(os.path.dirname(__file__), "data_cache")
 CHART_TEMPLATE = "plotly_dark"
-ACCENT, RED, BLUE, GOLD = "#00d4aa", "#ff4b4b", "#4b8bff", "#ffd700"
+# Professional colour palette — McKinsey / Bloomberg dark
+ACCENT = "#2563EB"   # McKinsey primary blue
+BLUE   = "#0EA5E9"   # sky blue (secondary)
+RED    = "#EF4444"   # crimson (losses / risk)
+GREEN  = "#10B981"   # emerald (gains / positive)
+GOLD   = "#F59E0B"   # amber (highlights)
+MUTED  = "#64748B"   # slate grey (secondary text)
 
 COMPANY_NAMES = {
     # Technology
@@ -475,17 +481,43 @@ def mc_paths(last_val, daily_rets, n_sim=300, n_days=252):
 #  CHART HELPERS
 # ══════════════════════════════════════════════════════════════════════════════
 
+_FONT = "Inter, Arial, Helvetica, sans-serif"
+_BG   = "#0F172A"    # paper / outer background
+_PLOT = "#111827"    # inner plot area
+_GRID = "#1E293B"    # gridlines
+_AXIS = "#334155"    # axis lines
+_TICK = "#64748B"    # tick labels
+
 def _layout(fig, title="", h=450, **kw):
-    fig.update_layout(template=CHART_TEMPLATE, title=title, height=h,
-                      hovermode="x unified",
-                      legend=dict(orientation="h", yanchor="bottom",
-                                  y=1.02, xanchor="right", x=1), **kw)
+    fig.update_layout(
+        template=CHART_TEMPLATE,
+        paper_bgcolor=_BG,
+        plot_bgcolor=_PLOT,
+        title=dict(text=f"<b>{title}</b>" if title else "",
+                   font=dict(size=14, color="#E2E8F0", family=_FONT),
+                   pad=dict(b=12)),
+        height=h,
+        hovermode="x unified",
+        font=dict(family=_FONT, color="#94A3B8", size=12),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02,
+                    xanchor="right", x=1,
+                    bgcolor="rgba(0,0,0,0)",
+                    font=dict(color="#94A3B8", size=11, family=_FONT)),
+        hoverlabel=dict(bgcolor="#1E293B", bordercolor="#334155",
+                        font=dict(family=_FONT, size=12, color="#E2E8F0")),
+        **kw
+    )
+    fig.update_xaxes(gridcolor=_GRID, linecolor=_AXIS, zerolinecolor=_GRID,
+                     tickfont=dict(color=_TICK, size=11, family=_FONT))
+    fig.update_yaxes(gridcolor=_GRID, linecolor=_AXIS, zerolinecolor=_GRID,
+                     tickfont=dict(color=_TICK, size=11, family=_FONT))
     return fig
 
 
 def chart_cumret(series_dict: dict, title="Cumulative Returns (rebased to 0%)") -> go.Figure:
-    colors = [ACCENT, "#4b8bff", GOLD, "#ff8c00", "#c084fc", "#fb7185",
-              "#34d399", "#60a5fa", "#f87171", "#a3e635"]
+    # Professional Tailwind-based palette — readable on dark backgrounds
+    colors = [ACCENT, BLUE, GOLD, GREEN, "#8B5CF6", "#EC4899",
+              "#F97316", "#14B8A6", "#A78BFA", "#94A3B8"]
     fig = go.Figure()
     for i, (name, p) in enumerate(series_dict.items()):
         p = p.dropna()
@@ -549,9 +581,17 @@ def chart_price_ta(ohlcv: pd.DataFrame, ticker: str) -> go.Figure:
                                  showlegend=True), row=1, col=1)
     fig.add_trace(go.Bar(x=ohlcv.index, y=ohlcv["Volume"], name="Volume",
                          marker_color="rgba(100,149,237,0.4)"), row=2, col=1)
-    fig.update_layout(template=CHART_TEMPLATE, title=f"{ticker} – Price & Volume",
+    fig.update_layout(template=CHART_TEMPLATE,
+                      paper_bgcolor=_BG, plot_bgcolor=_PLOT,
+                      title=dict(text=f"<b>{ticker} — Price & Volume</b>",
+                                 font=dict(size=14, color="#E2E8F0", family=_FONT)),
                       xaxis_rangeslider_visible=False, height=600,
-                      legend=dict(orientation="h"))
+                      font=dict(family=_FONT, color="#94A3B8"),
+                      hoverlabel=dict(bgcolor="#1E293B", bordercolor="#334155",
+                                      font=dict(family=_FONT, size=12)),
+                      legend=dict(orientation="h", font=dict(color="#94A3B8")))
+    fig.update_xaxes(gridcolor=_GRID, linecolor=_AXIS, tickfont=dict(color=_TICK, family=_FONT))
+    fig.update_yaxes(gridcolor=_GRID, linecolor=_AXIS, tickfont=dict(color=_TICK, family=_FONT))
     return fig
 
 
@@ -563,9 +603,9 @@ def chart_rsi_macd(prices: pd.Series, ticker: str) -> go.Figure:
                         vertical_spacing=0.12)
     fig.add_trace(go.Scatter(x=prices.index, y=r, name="RSI",
                              line=dict(color=ACCENT, width=1.5)), row=1, col=1)
-    fig.add_hrect(y0=70, y1=100, fillcolor=RED, opacity=0.08, row=1, col=1)
-    fig.add_hrect(y0=0,  y1=30,  fillcolor=BLUE, opacity=0.08, row=1, col=1)
-    for level, color in [(70, RED), (30, BLUE)]:
+    fig.add_hrect(y0=70, y1=100, fillcolor=RED,  opacity=0.08, row=1, col=1)
+    fig.add_hrect(y0=0,  y1=30,  fillcolor=GREEN, opacity=0.08, row=1, col=1)
+    for level, color in [(70, RED), (30, GREEN)]:
         fig.add_hline(y=level, line=dict(color=color, dash="dash", width=1), row=1, col=1)
     fig.add_trace(go.Scatter(x=prices.index, y=ml, name="MACD",
                              line=dict(color=ACCENT, width=1.5)), row=2, col=1)
@@ -574,8 +614,14 @@ def chart_rsi_macd(prices: pd.Series, ticker: str) -> go.Figure:
     fig.add_trace(go.Bar(x=prices.index, y=hist, name="Histogram",
                          marker_color=[ACCENT if v >= 0 else RED for v in hist],
                          opacity=0.6), row=2, col=1)
-    fig.update_layout(template=CHART_TEMPLATE, height=500,
-                      legend=dict(orientation="h"))
+    fig.update_layout(template=CHART_TEMPLATE,
+                      paper_bgcolor=_BG, plot_bgcolor=_PLOT,
+                      height=500, font=dict(family=_FONT, color="#94A3B8"),
+                      hoverlabel=dict(bgcolor="#1E293B", bordercolor="#334155",
+                                      font=dict(family=_FONT, size=12)),
+                      legend=dict(orientation="h", font=dict(color="#94A3B8")))
+    fig.update_xaxes(gridcolor=_GRID, linecolor=_AXIS, tickfont=dict(color=_TICK, family=_FONT))
+    fig.update_yaxes(gridcolor=_GRID, linecolor=_AXIS, tickfont=dict(color=_TICK, family=_FONT))
     return fig
 
 
@@ -668,18 +714,32 @@ def chart_ef(mu, cov, tickers) -> go.Figure:
         ))
 
     fig.update_layout(
-        template=CHART_TEMPLATE, height=560,
-        title="Efficient Frontier — Monte Carlo Simulation",
-        xaxis=dict(title="Annualised Volatility", tickformat=".0%"),
+        template=CHART_TEMPLATE,
+        paper_bgcolor=_BG, plot_bgcolor=_PLOT,
+        height=580,
+        title=dict(text="<b>Efficient Frontier — Monte Carlo Simulation</b>",
+                   font=dict(size=14, color="#E2E8F0", family=_FONT)),
+        font=dict(family=_FONT, color="#94A3B8"),
+        xaxis=dict(title="Annualised Volatility", tickformat=".0%",
+                   gridcolor=_GRID, linecolor=_AXIS,
+                   titlefont=dict(color=_TICK, family=_FONT),
+                   tickfont=dict(color=_TICK, family=_FONT)),
         yaxis=dict(title="Annualised Return", tickformat=".0%",
-                   range=[y_min, y_max]),
+                   range=[y_min, y_max],
+                   gridcolor=_GRID, linecolor=_AXIS,
+                   titlefont=dict(color=_TICK, family=_FONT),
+                   tickfont=dict(color=_TICK, family=_FONT)),
         legend=dict(orientation="v", yanchor="top", y=0.98,
                     xanchor="left", x=0.01,
-                    bgcolor="rgba(0,0,0,0.35)", borderwidth=0),
+                    bgcolor="rgba(15,23,42,0.7)",
+                    bordercolor="#1E293B", borderwidth=1,
+                    font=dict(color="#94A3B8", size=11, family=_FONT)),
+        hoverlabel=dict(bgcolor="#1E293B", bordercolor="#334155",
+                        font=dict(family=_FONT, size=12, color="#E2E8F0")),
         annotations=[dict(
             x=0.99, y=0.02, xref="paper", yref="paper", showarrow=False,
             text="Each dot represents one randomly weighted portfolio.",
-            align="right", font=dict(size=10, color="#888"),
+            align="right", font=dict(size=10, color=_TICK, family=_FONT),
         )],
     )
     return fig
@@ -691,7 +751,7 @@ def chart_styles_cumret(style_rets: dict) -> go.Figure:
         "Equal Weight":  ACCENT,
         "Min Variance":  BLUE,
         "Mean-Variance": GOLD,
-        "Risk Parity":   "#ff8c00",
+        "Risk Parity":   GREEN,
     }
     fig = go.Figure()
     for name, p in series.items():
@@ -762,7 +822,16 @@ def chart_corr_heatmap(prices: pd.DataFrame) -> go.Figure:
     corr = prices.pct_change().dropna().corr()
     fig = px.imshow(corr, text_auto=".2f", color_continuous_scale="RdBu_r",
                     zmin=-1, zmax=1, title="Pairwise Return Correlation")
-    fig.update_layout(template=CHART_TEMPLATE, height=460)
+    fig.update_layout(
+        template=CHART_TEMPLATE,
+        paper_bgcolor=_BG, plot_bgcolor=_PLOT,
+        height=460,
+        font=dict(family=_FONT, color="#94A3B8"),
+        title=dict(font=dict(size=14, color="#E2E8F0", family=_FONT)),
+        coloraxis_colorbar=dict(tickfont=dict(color=_TICK, family=_FONT)),
+    )
+    fig.update_xaxes(tickfont=dict(color=_TICK, family=_FONT))
+    fig.update_yaxes(tickfont=dict(color=_TICK, family=_FONT))
     return fig
 
 
@@ -775,20 +844,116 @@ st.set_page_config(page_title="Portfolio Management Dashboard", page_icon="📊"
 
 st.markdown("""
 <style>
-  .mcard {
-    background:#1e1e2e; border-radius:10px; padding:16px 20px;
-    border-left:4px solid #00d4aa; margin-bottom:8px;
-  }
-  .mlabel { font-size:.75rem; color:#888; text-transform:uppercase; letter-spacing:.08em; }
-  .mvalue { font-size:1.4rem; font-weight:700; color:#f0f0f0; margin-top:4px; }
-  .mpos   { color:#00d4aa !important; }
-  .mneg   { color:#ff4b4b !important; }
+/* ── Google Inter font ───────────────────────────────────────────────────── */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+html, body, [class*="css"], .stApp, .stMarkdown, p, span, label, li, td, th {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif !important;
+}
+
+/* ── Typography ──────────────────────────────────────────────────────────── */
+h1 {
+    font-size: 2rem !important; font-weight: 700 !important;
+    letter-spacing: -0.03em !important; color: #F1F5F9 !important;
+    font-family: 'Inter', sans-serif !important;
+}
+h2, h3 {
+    font-weight: 600 !important; letter-spacing: -0.02em !important;
+    color: #E2E8F0 !important; font-family: 'Inter', sans-serif !important;
+}
+
+/* ── KPI metric cards ────────────────────────────────────────────────────── */
+.mcard {
+    background: #111827;
+    border-radius: 4px;
+    padding: 18px 22px;
+    border: 1px solid #1E293B;
+    border-left: 3px solid #2563EB;
+    margin-bottom: 10px;
+}
+.mlabel {
+    font-size: 0.67rem;
+    color: #475569;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    font-weight: 600;
+    font-family: 'Inter', sans-serif;
+}
+.mvalue {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: #F1F5F9;
+    margin-top: 6px;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.02em;
+    font-family: 'Inter', sans-serif;
+}
+.mpos { color: #10B981 !important; }
+.mneg { color: #EF4444 !important; }
+
+/* ── Sidebar button ──────────────────────────────────────────────────────── */
+[data-testid="stSidebar"] .stButton > button {
+    background-color: #2563EB !important;
+    color: #ffffff !important;
+    font-weight: 600 !important;
+    letter-spacing: 0.04em !important;
+    border: none !important;
+    border-radius: 4px !important;
+    font-family: 'Inter', sans-serif !important;
+}
+[data-testid="stSidebar"] .stButton > button:hover {
+    background-color: #1D4ED8 !important;
+}
+[data-testid="stSidebar"] {
+    border-right: 1px solid #1E293B;
+}
+
+/* ── Tabs ────────────────────────────────────────────────────────────────── */
+.stTabs [data-baseweb="tab-list"] {
+    border-bottom: 1px solid #1E293B !important;
+    gap: 4px;
+}
+.stTabs [data-baseweb="tab"] {
+    font-size: 0.78rem !important;
+    font-weight: 500 !important;
+    letter-spacing: 0.07em !important;
+    text-transform: uppercase !important;
+    color: #64748B !important;
+    padding: 8px 18px !important;
+    font-family: 'Inter', sans-serif !important;
+    border-radius: 3px 3px 0 0 !important;
+}
+.stTabs [aria-selected="true"] {
+    color: #2563EB !important;
+    border-bottom: 2px solid #2563EB !important;
+    background: rgba(37,99,235,0.06) !important;
+}
+
+/* ── DataFrames ──────────────────────────────────────────────────────────── */
+.stDataFrame { border: 1px solid #1E293B !important; border-radius: 4px !important; }
+
+/* ── Expanders ───────────────────────────────────────────────────────────── */
+.streamlit-expanderHeader {
+    font-size: 0.85rem !important;
+    font-weight: 500 !important;
+    letter-spacing: 0.02em !important;
+    color: #94A3B8 !important;
+}
+
+/* ── Dividers ────────────────────────────────────────────────────────────── */
+hr { border-color: #1E293B !important; opacity: 1 !important; }
 </style>""", unsafe_allow_html=True)
 
 def mcard(label, value, pos=None):
-    cls = "mpos" if pos is True else ("mneg" if pos is False else "")
-    st.markdown(f'<div class="mcard"><div class="mlabel">{label}</div>'
-                f'<div class="mvalue {cls}">{value}</div></div>', unsafe_allow_html=True)
+    cls   = "mpos" if pos is True else ("mneg" if pos is False else "")
+    # accent border colour: green for positive, red for negative, blue for neutral
+    border = "#10B981" if pos is True else ("#EF4444" if pos is False else "#2563EB")
+    st.markdown(
+        f'<div class="mcard" style="border-left-color:{border}">'
+        f'<div class="mlabel">{label}</div>'
+        f'<div class="mvalue {cls}">{value}</div></div>',
+        unsafe_allow_html=True,
+    )
 
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 with st.sidebar:
