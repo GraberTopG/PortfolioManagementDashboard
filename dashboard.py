@@ -1141,7 +1141,6 @@ with tab_tech:
     st.subheader("Technical Analysis")
     primary = st.selectbox("Select ticker", avail, key="ta_ticker")
     ohlcv = fetch_single(primary, api_key)
-    ohlcv = ohlcv.loc[str(start_dt):str(end_dt)] if not ohlcv.empty else ohlcv
 
     if ohlcv.empty:
         st.warning("No OHLCV data available.")
