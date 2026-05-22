@@ -8,8 +8,7 @@ Tabs:
   2. Technical       – candlestick, MAs, Bollinger, RSI, MACD  (ticker selector inside)
   3. Correlation     – heatmap + rolling pairwise correlation
   4. Portfolio       – efficient frontier, style comparison (EW / MinVar / MeanVariance / RiskParity)
-  5. Risk Metrics    – portfolio VaR/CVaR/drawdown, then individual stock drill-down
-  6. Monte Carlo     – portfolio GBM simulation, then single-stock simulation
+  5. Risk Metrics    – portfolio VaR/CVaR/drawdown, individual stock drill-down, GBM Monte Carlo simulation
 
 Data: Yahoo Finance via yfinance — no API key required, full history from 2000.
 """
@@ -1136,13 +1135,12 @@ st.divider()
 # ══════════════════════════════════════════════════════════════════════════════
 #  TAB LAYOUT
 # ══════════════════════════════════════════════════════════════════════════════
-tab_overview, tab_tech, tab_corr, tab_port, tab_risk, tab_mc = st.tabs([
+tab_overview, tab_tech, tab_corr, tab_port, tab_risk = st.tabs([
     "Overview",
     "Technical Analysis",
     "Correlation",
     "Portfolio Optimisation",
     "Risk Metrics",
-    "Monte Carlo",
 ])
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1629,52 +1627,9 @@ with tab_risk:
                     use_container_width=True)
 
     st.divider()
-    st.subheader("Methodology")
-    st.markdown(rf"""
-**Value at Risk (VaR)**
 
-VaR answers the question: *what is the maximum loss I should expect on a typical bad day?*
-At a {confidence:.0%} confidence level, VaR is the loss threshold that is exceeded on only {1-confidence:.0%} of trading days.
-
-Two approaches are implemented here:
-
-- **Historical VaR** reads the loss directly from the empirical return distribution — no distributional assumption required:
-
-$$\text{{VaR}}_{{1-\alpha}} = -\text{{Percentile}}(r,\, (1-\alpha) \times 100)$$
-
-- **Parametric VaR** assumes returns are normally distributed and uses the sample mean $\mu$ and standard deviation $\sigma$:
-
-$$\text{{VaR}}_{{1-\alpha}} = -(\mu + z_{{1-\alpha}} \cdot \sigma)$$
-
-where $z_{{1-\alpha}}$ is the standard normal quantile (e.g. $-1.645$ at 95%).
-
-**CVaR / Expected Shortfall (ES)**
-
-CVaR goes further than VaR — it measures the *average* loss on the days that VaR is breached.
-It is a coherent risk measure and better captures tail risk:
-
-$$\text{{CVaR}}_{{1-\alpha}} = -\,\mathbb{{E}}\!\left[r \;\middle|\; r < -\text{{VaR}}_{{1-\alpha}}\right]$$
-
-CVaR is always $\geq$ VaR and is more sensitive to extreme outcomes, making it preferred by risk committees.
-
-**Drawdown**
-
-Drawdown measures the decline from a historical peak. Maximum Drawdown is the worst such decline over the period:
-
-$$\text{{DD}}_t = \frac{{P_t - \max_{{s \leq t}} P_s}}{{\max_{{s \leq t}} P_s}}, \qquad \text{{Max DD}} = \min_t \text{{DD}}_t$$
-
-**Rolling VaR**
-
-The rolling VaR shows how the portfolio's downside risk has evolved through time using a sliding window.
-Spikes in rolling VaR correspond to periods of elevated volatility (e.g. market drawdowns, macro shocks).
-A stable rolling VaR indicates a consistent risk profile; a rising trend signals deteriorating conditions.
-""")
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# TAB 6 · MONTE CARLO
-# ─────────────────────────────────────────────────────────────────────────────
-with tab_mc:
+    # ── Monte Carlo Simulation ────────────────────────────────────────────────
+    st.subheader("Monte Carlo Simulation")
     col_mc1, col_mc2 = st.columns(2)
     mc_sims = col_mc1.slider(
         "Monte Carlo paths", 100, 800, 300, 100,
@@ -1741,15 +1696,53 @@ with tab_mc:
 
     st.divider()
     st.subheader("Methodology")
-    st.markdown(r"""
+    st.markdown(rf"""
+**Value at Risk (VaR)**
+
+VaR answers the question: *what is the maximum loss I should expect on a typical bad day?*
+At a {confidence:.0%} confidence level, VaR is the loss threshold that is exceeded on only {1-confidence:.0%} of trading days.
+
+Two approaches are implemented here:
+
+- **Historical VaR** reads the loss directly from the empirical return distribution — no distributional assumption required:
+
+$$\text{{VaR}}_{{1-\alpha}} = -\text{{Percentile}}(r,\, (1-\alpha) \times 100)$$
+
+- **Parametric VaR** assumes returns are normally distributed and uses the sample mean $\mu$ and standard deviation $\sigma$:
+
+$$\text{{VaR}}_{{1-\alpha}} = -(\mu + z_{{1-\alpha}} \cdot \sigma)$$
+
+where $z_{{1-\alpha}}$ is the standard normal quantile (e.g. $-1.645$ at 95%).
+
+**CVaR / Expected Shortfall (ES)**
+
+CVaR goes further than VaR — it measures the *average* loss on the days that VaR is breached.
+It is a coherent risk measure and better captures tail risk:
+
+$$\text{{CVaR}}_{{1-\alpha}} = -\,\mathbb{{E}}\!\left[r \;\middle|\; r < -\text{{VaR}}_{{1-\alpha}}\right]$$
+
+CVaR is always $\geq$ VaR and is more sensitive to extreme outcomes, making it preferred by risk committees.
+
+**Drawdown**
+
+Drawdown measures the decline from a historical peak. Maximum Drawdown is the worst such decline over the period:
+
+$$\text{{DD}}_t = \frac{{P_t - \max_{{s \leq t}} P_s}}{{\max_{{s \leq t}} P_s}}, \qquad \text{{Max DD}} = \min_t \text{{DD}}_t$$
+
+**Rolling VaR**
+
+The rolling VaR shows how the portfolio's downside risk has evolved through time using a sliding window.
+Spikes in rolling VaR correspond to periods of elevated volatility (e.g. market drawdowns, macro shocks).
+A stable rolling VaR indicates a consistent risk profile; a rising trend signals deteriorating conditions.
+
 **Geometric Brownian Motion (GBM)**
 
 Monte Carlo simulation generates a large number of plausible future price paths by repeatedly sampling random shocks.
 Each path evolves according to Geometric Brownian Motion — the standard continuous-time model for asset prices:
 
-$$P_t = P_{t-1} \cdot e^{\varepsilon_t}, \qquad \varepsilon_t \sim \mathcal{N}(0,\, \hat{\sigma})$$
+$$P_t = P_{{t-1}} \cdot e^{{\varepsilon_t}}, \qquad \varepsilon_t \sim \mathcal{{N}}(0,\, \hat{{\sigma}})$$
 
-where $\hat{\sigma}$ is the daily volatility estimated from the historical return series of the selected period.
+where $\hat{{\sigma}}$ is the daily volatility estimated from the historical return series of the selected period.
 After $N$ simulations, the distribution of terminal values gives a probabilistic view of the range of outcomes.
 
 **Why zero drift?**
@@ -1766,11 +1759,11 @@ A high-volatility portfolio produces a much wider fan than a low-volatility one,
 
 Rather than the misleading P(value > today) — which is biased upward by the log-normal distribution's positive skew — this dashboard reports the probability that the terminal value falls more than 15% below today's level:
 
-$$P(\text{loss} > 15\%) = \frac{1}{N}\sum_{i=1}^{N} \mathbf{1}\!\left[P_T^{(i)} < 0.85 \cdot P_0\right]$$
+$$P(\text{{loss}} > 15\%) = \frac{{1}}{{N}}\sum_{{i=1}}^{{N}} \mathbf{{1}}\!\left[P_T^{{(i)}} < 0.85 \cdot P_0\right]$$
 
 This is the question a risk committee actually asks: *what is the probability of a material loss?*
 
-**Limitations**
+**Model limitations**
 
 - **Constant volatility** — GBM does not model volatility clustering (GARCH effects). Real volatility spikes during crises, so tail events are likely underestimated.
 - **Normal shocks** — Real return distributions have fat tails and negative skew. Extreme losses occur more frequently than the normal distribution implies.

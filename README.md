@@ -49,11 +49,8 @@ The analytical framework draws on two sources:
 - Drawdown chart
 - Rolling VaR
 - Individual stock drill-down (adjustable confidence level)
-
-### Monte Carlo
-- GBM portfolio simulation with percentile bands (zero-drift)
-- Terminal value distribution
-- Single-stock simulation with terminal price distribution
+- GBM Monte Carlo simulation with percentile fan chart (zero-drift)
+- Terminal value distribution (portfolio and single stock)
 - P(loss > 15%) replacing misleading P(value > today)
 
 ---
