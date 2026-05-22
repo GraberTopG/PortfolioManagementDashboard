@@ -1381,47 +1381,23 @@ with tab_overview:
     st.divider()
     st.subheader("Methodology")
     st.markdown(r"""
-**Returns and compounding**
+**Returns** — Daily simple returns, compounded to cumulative and rebased to 0% at period start.
+Portfolio return is the weighted sum of stock returns: $r_p = \sum_i w_i r_i$.
 
-All return series use daily log-close prices adjusted for splits and dividends.
-Cumulative returns are computed as the compounded product of daily simple returns,
-rebased to 0% at the start of the selected period:
+**Concentration (HHI)** — $\text{HHI} = \sum w_i^2$; Effective N $= 1/\text{HHI}$.
+Higher HHI means more concentration; Effective N is the equivalent number of equal-weight positions.
 
-$$r_t = \frac{P_t - P_{t-1}}{P_{t-1}}, \qquad \text{Cumulative}_t = \prod_{s=1}^{t}(1 + r_s) - 1$$
+**Sector exposure** — Active weight = portfolio sector weight minus approximate S&P 500 GICS weight. Positive = overweight vs the index.
 
-**Portfolio return**
+**Benchmark metrics**
 
-The portfolio daily return is the weighted sum of individual stock returns,
-where weights $w_i$ are either equal ($1/N$) or user-defined and normalised to sum to 1:
-
-$$r_p = \sum_{i=1}^{N} w_i \cdot r_i$$
-
-**Benchmark-relative metrics**
-
-| Metric | Formula | Interpretation |
-|--------|---------|---------------|
-| Tracking Error | $\sigma(r_p - r_b) \cdot \sqrt{252}$ | Annualised volatility of active returns |
-| Information Ratio | $\frac{\overline{r_p - r_b}}{\text{TE}} \cdot \sqrt{252}$ | Active return per unit of tracking risk |
-| Active Share | $\frac{1}{2}\sum_i |w_i - b_i|$ | Portfolio divergence from market-cap benchmark; 0% = index clone, 100% = fully active |
-| Beta | $\beta = \frac{\text{Cov}(r_p, r_b)}{\text{Var}(r_b)}$ | Sensitivity to benchmark moves |
-| Alpha | $\alpha = \bar{r}_p - r_f - \beta(\bar{r}_b - r_f)$ | Annualised excess return above what Beta predicts |
-
-**Concentration (HHI)**
-
-The Herfindahl-Hirschman Index measures portfolio concentration.
-Effective N translates it into an equivalent number of equal-weight positions:
-
-$$\text{HHI} = \sum_{i=1}^{N} w_i^2, \qquad \text{Effective } N = \frac{1}{\text{HHI}}$$
-
-An equal-weight 8-stock portfolio has HHI = 0.125 and Effective N = 8.
-A portfolio with 70% in one name has HHI ≈ 0.50 and Effective N ≈ 2.
-
-**Sector exposure**
-
-Portfolio sector weights are compared against approximate S&P 500 GICS sector
-weights (2025). The active weight (diamond markers) is the difference:
-$w_{\text{sector}}^{\text{portfolio}} - w_{\text{sector}}^{\text{S\&P 500}}$.
-A positive active weight signals an overweight relative to the index.
+| Metric | Formula |
+|--------|---------|
+| Tracking Error | $\sigma(r_p - r_b)\cdot\sqrt{252}$ |
+| Information Ratio | $\overline{(r_p - r_b)}/\text{TE}\cdot\sqrt{252}$ |
+| Active Share | $\tfrac{1}{2}\sum_i \|w_i - b_i\|$ |
+| Beta | $\text{Cov}(r_p,r_b)/\text{Var}(r_b)$ |
+| Alpha | $\bar{r}_p - r_f - \beta(\bar{r}_b - r_f)$, annualised |
 """)
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1441,45 +1417,16 @@ with tab_tech:
     st.divider()
     st.subheader("Methodology")
     st.markdown(r"""
-**Moving Averages (MA 20 / MA 50)**
+**MA 20 / 50** — Simple moving averages over 20 and 50 days. Price above MA = bullish bias; below = bearish.
 
-Simple moving averages smooth price noise to reveal the underlying trend.
-The 20-day MA captures short-term momentum; the 50-day MA captures the medium-term trend.
-A price crossing above its MA is conventionally read as bullish; crossing below as bearish.
+**Bollinger Bands** — MA20 ± 2 standard deviations. Bands widen in high-volatility periods; prices near the edges signal statistically extended moves.
 
-$$\text{MA}_t(n) = \frac{1}{n}\sum_{k=0}^{n-1} P_{t-k}$$
+**RSI (14d)** — Momentum oscillator on a 0–100 scale. Above 70 = overbought; below 30 = oversold.
+$$\text{RSI} = 100 - \frac{100}{1 + \bar{G}_{14}/\bar{L}_{14}}$$
 
-**Bollinger Bands**
+**MACD (12/26/9)** — Difference between a 12-day and 26-day EMA. The 9-day signal line smooths it; crossovers indicate momentum shifts.
 
-Bollinger Bands place a volatility envelope around the 20-day MA.
-The bands expand during high-volatility periods and contract when volatility is low.
-Prices touching the upper band are statistically extended; touching the lower band may signal oversold conditions.
-
-$$\text{Upper} = \text{MA}_{20} + 2\sigma_{20}, \qquad \text{Lower} = \text{MA}_{20} - 2\sigma_{20}$$
-
-where $\sigma_{20}$ is the rolling 20-day standard deviation of prices.
-
-**RSI — Relative Strength Index (14 days)**
-
-RSI measures the speed and magnitude of recent price changes on a 0–100 scale.
-Readings above 70 are conventionally considered overbought; below 30 oversold.
-
-$$\text{RSI} = 100 - \frac{100}{1 + \frac{\overline{G}_{14}}{\overline{L}_{14}}}$$
-
-where $\overline{G}_{14}$ and $\overline{L}_{14}$ are the 14-day average gain and average loss respectively.
-
-**MACD — Moving Average Convergence/Divergence (12/26/9)**
-
-MACD captures momentum by comparing a fast and slow exponential moving average.
-The signal line (9-day EMA of MACD) smooths the indicator; the histogram shows the gap between them.
-A MACD crossing above its signal line is a conventional buy signal; crossing below is a sell signal.
-
-$$\text{MACD} = \text{EMA}_{12} - \text{EMA}_{26}, \qquad \text{Signal} = \text{EMA}_9(\text{MACD})$$
-
-**Important caveat**
-
-Technical indicators are descriptive tools derived solely from price and volume history.
-They do not predict future returns and should not be used in isolation for investment decisions.
+*Technical indicators are descriptive only and do not predict future returns.*
 """)
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1521,33 +1468,13 @@ with tab_corr:
     st.divider()
     st.subheader("Methodology")
     st.markdown(r"""
-**Pearson correlation coefficient**
+**Pearson correlation** — Measures linear co-movement of daily returns, ranging from −1 to +1.
+$$\rho_{i,j} = \frac{\text{Cov}(r_i, r_j)}{\sigma_i \cdot \sigma_j}$$
+High correlation between two holdings reduces diversification benefit. Correlations tend to spike toward +1 during market stress, precisely when diversification matters most.
 
-The heatmap shows the pairwise Pearson correlation of daily log returns over the selected period.
-It measures the linear co-movement between two return series, ranging from −1 (perfect inverse) to +1 (perfect co-movement):
+**Rolling correlation** — Shows how the pairwise relationship changes through time. A pair that looks uncorrelated over the full period may have been tightly correlated during drawdowns.
 
-$$\rho_{i,j} = \frac{\text{Cov}(r_i,\, r_j)}{\sigma_i \cdot \sigma_j}$$
-
-A high positive correlation between two holdings means they tend to move together —
-adding both to a portfolio provides less diversification benefit than their individual risk suggests.
-For a long-only portfolio, avoiding highly correlated positions is the primary lever for reducing idiosyncratic concentration risk.
-
-**Rolling correlation**
-
-The rolling window (default 21 trading days ≈ 1 month) shows how the pairwise relationship
-changes through time. Correlations are not stable: they tend to spike toward +1 during market
-stress (the "correlation breakdown" effect), which is precisely when diversification is most needed.
-A pair that looks uncorrelated over the full period may have been tightly correlated during every drawdown.
-
-**Return scatter and OLS trendline**
-
-Each point represents one trading day. The OLS (Ordinary Least Squares) trendline fits:
-
-$$r_j = \alpha + \beta \cdot r_i + \varepsilon$$
-
-The slope $\beta$ is equivalent to the Pearson correlation scaled by the ratio of volatilities.
-The scatter of points around the line shows the residual (idiosyncratic) component that is
-not explained by the linear relationship — the wider the scatter, the more diversification benefit remains.
+**Return scatter** — Each point is one trading day. The OLS trendline fits $r_j = \alpha + \beta r_i$; wider scatter around the line means more residual diversification benefit.
 """)
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1633,138 +1560,19 @@ with tab_port:
         # ── Strategy methodology ──────────────────────────────────────────────
         st.subheader("Methodology")
         st.markdown(f"""
-All optimisations are solved subject to **full investment** (weights sum to 1),
-**long-only** constraints (no short selling), and a **40% single-stock cap**
-(SLSQP). $N$ denotes the number of assets, $\\Sigma$ the covariance matrix,
-and $\\mu$ the vector of mean returns. $r_f = 5.25\\%$ is the risk-free rate.
+All strategies are constrained to full investment (weights sum to 1), long-only, and a 40% single-stock cap.
+The backtest uses a walk-forward expanding window — at each monthly rebalancing date, only historical data up to that date is used.
+Data starts from **{_common_start.strftime('%d %b %Y')}** (earliest common date across all selected tickers).
 
-**Common data period.** Every calculation requires all tickers to have a price
-simultaneously. The window therefore starts from **{_common_start.strftime('%d %b %Y')}**
-— the earliest date on which every selected ticker has data. Remove
-short-history tickers to extend the history.
-""")
+**1. Equal Weight** — $w_i = 1/N$. Rebalanced monthly to restore equal weights as prices drift. No estimation required.
 
-        st.markdown("**1. Equal Weight (1/N)**")
-        st.markdown("*Invest an equal proportion in every asset; rebalance monthly.*")
-        st.latex(r"w_i = \frac{1}{N} \qquad \forall\; i = 1, \ldots, N")
-        st.markdown("""
-No estimation of expected returns or covariances is required. Research
-(DeMiguel et al., 2009) shows it is surprisingly hard to beat out-of-sample —
-it benefits from maximum diversification and zero estimation error.
+**2. Minimum Variance** — Minimises portfolio volatility using the historical covariance matrix. Only $\\Sigma$ is needed; expected returns are not used. Zero-weight allocations are normal: stocks that do not reduce portfolio volatility are excluded.
 
-**Rebalancing.** Stocks drift from their equal weights as prices move. Monthly
-rebalancing sells winners and buys laggards to restore 1/N. This is required
-to maintain the strategy — without it the portfolio would gradually become
-a momentum-tilted, concentration-increasing portfolio.
+**3. Mean-Variance (Max Sharpe)** — Maximises the Sharpe ratio using historical means and covariances. The backtest uses the 3-month T-bill rate (^IRX) prevailing at each rebalancing date; the static Efficient Frontier uses the current rate (5.25%). *Limitation: historical sample means are noisy, so the optimiser tends to concentrate in whichever stock happened to perform best in-sample.*
 
-**No look-ahead bias.** Weights are fixed at 1/N regardless of any data, so no
-historical information is used and there is no estimation error.
-""")
+**4. Risk Parity (Inverse Volatility)** — $w_i \\propto 1/\\hat{{\\sigma}}_i$. Assets with lower volatility receive higher weights so each contributes roughly equal risk. Volatility is estimated from the expanding window; weights improve in stability as more data accumulates. *Note: this is inverse-vol weighting, a simplified version of true risk parity.*
 
-        st.markdown("**2. Minimum Variance**")
-        st.markdown("*Minimise portfolio volatility; rebalance monthly; walk-forward.*")
-        st.latex(r"""
-\min_{w} \;\; w^\top \Sigma\, w \qquad
-\text{subject to} \;\; \mathbf{1}^\top w = 1,\;\; 0 \le w_i \le 0.40
-""")
-        st.markdown("""
-The solution concentrates in low-volatility, low-correlation assets. It is the
-leftmost point on the efficient frontier and requires only the covariance matrix
-— no return forecasts are needed (expected returns are not used in the
-objective).
-
-**Walk-forward / no look-ahead.** At each monthly rebalancing date, $\\Sigma$
-is estimated from an **expanding window** of daily returns up to (but not
-including) that date. No future data is ever used.
-
-**Covariance stability.** The estimate improves as the history grows. For the
-first 63 trading days (~3 months) the optimiser falls back to Equal Weight
-while there is insufficient data for a reliable covariance matrix. Zero-weight
-allocations are mathematically normal: stocks that do not improve the objective
-are correctly excluded.
-""")
-
-        st.markdown("**3. Mean-Variance (Tangency Portfolio)**")
-        st.markdown("*Maximise Sharpe ratio; rebalance monthly; walk-forward.*")
-        st.markdown(r"""
-The **tangency portfolio** maximises the Sharpe ratio — the point where the
-Capital Market Line touches the efficient frontier:
-""")
-        st.latex(r"""
-\max_{w} \;\; \frac{w^\top \mu - r_f}{\sqrt{w^\top \Sigma\, w}}
-\qquad \text{subject to} \;\; \mathbf{1}^\top w = 1,\;\; 0 \le w_i \le 0.40
-""")
-        st.markdown(r"""
-**Walk-forward / no look-ahead.** Both $\mu$ and $\Sigma$ are estimated from
-the expanding window up to each rebalancing date.
-
-**Time-varying risk-free rate.** The backtest uses the 3-month US Treasury
-Bill rate (^IRX) prevailing at each rebalancing date — not today's rate.
-Using a fixed modern rate of 5.25% throughout would be look-ahead bias: from
-2009 to 2022 the T-bill rate was effectively 0–2%, making the historical
-hurdle rate very different and shifting the tangency portfolio toward
-higher-return assets. The static Efficient Frontier chart uses the current
-rate ($r_f = 5.25\%$) as it represents the present investment opportunity set.
-
-**Known limitation — estimation error in expected returns.** $\mu$ is
-approximated by the sample mean of historical daily returns, which is an
-extremely noisy estimator (standard error $\approx \sigma/\sqrt{T}$). The
-optimiser treats these noisy estimates as if they were exact, so it
-concentrates heavily in whatever stock happened to have the highest sample
-mean — a phenomenon sometimes called the *error maximiser*. This is not
-look-ahead bias but an inherent weakness of classical MV optimisation. The
-40% single-stock cap limits the most extreme concentrations.
-""")
-
-        st.markdown("**4. Risk Parity (Inverse Volatility)**")
-        st.markdown("*Weight each asset inversely proportional to its volatility; rebalance monthly; walk-forward.*")
-        st.latex(r"""
-w_i = \frac{1/\hat{\sigma}_i}{\displaystyle\sum_{j=1}^{N} 1/\hat{\sigma}_j}
-""")
-        st.markdown(r"""
-Assets with high volatility receive smaller weights so that every asset
-contributes roughly equal risk to the portfolio.
-
-**Implementation note.** This is *inverse-volatility weighting* — a simplified
-form of risk parity. True risk parity equalises each asset's marginal risk
-contribution, which requires the full covariance matrix. Inverse-vol weighting
-is equivalent to risk parity only when all pairwise correlations are equal.
-
-**Walk-forward / no look-ahead.** $\hat{\sigma}_i$ is the sample standard
-deviation of daily returns estimated from the expanding window up to each
-rebalancing date. No future data is used.
-
-**Volatility stability.** The estimate improves as more data accumulates:
-- After 1 month (~21 returns): standard error of $\hat{\sigma}$ is roughly
-  $\hat{\sigma}/\sqrt{2 \times 21} \approx \hat{\sigma}/6$ — noisy but usable.
-- After 1 year (~252 returns): standard error falls to $\hat{\sigma}/\sqrt{504}
-  \approx \hat{\sigma}/22$ — much more reliable.
-
-The 63-day minimum lookback ensures at least 3 months of data before
-inverse-vol weights replace equal weights.
-""")
-
-        st.markdown("**5. Market Weight (Buy-and-Hold)**")
-        st.markdown("*Hold each stock proportional to its market cap at inception; never rebalance.*")
-        st.latex(r"""
-w_i(0) = \frac{\mathrm{MCap}_i(0)}{\displaystyle\sum_{j=1}^{N} \mathrm{MCap}_j(0)},
-\qquad w_i(t) = \frac{w_i(0)\,(1+R_i^{0\to t})}{\displaystyle\sum_j w_j(0)\,(1+R_j^{0\to t})}
-""")
-        st.markdown(r"""
-A market-cap weighted portfolio is **inherently buy-and-hold**. If you hold
-each stock proportional to its market cap at $t=0$, then as prices move, your
-portfolio value in each stock grows proportionally — so the weights
-automatically remain at market-cap proportions. No rebalancing is ever needed
-or appropriate. This is why passive index funds have very low turnover.
-
-The backtest computes this as a vectorised buy-and-hold:
-$$V(t) = \sum_i w_i(0) \cdot \prod_{s=1}^{t}(1+r_i^s)$$
-
-**Look-ahead approximation.** Historical per-share market caps are unavailable
-from Yahoo Finance, so the initial weights $w_i(0)$ use *today's* market caps
-as a proxy. This overstates the weight of stocks that became large caps recently
-(e.g. NVDA). The portfolio structure (buy-and-hold, no rebalancing) is
-correct; only the starting weights carry this approximation.
+**5. Market Weight (Buy-and-Hold)** — Initial weights proportional to current market caps, then held without rebalancing. A market-cap portfolio never needs rebalancing: price appreciation automatically keeps weights at market-cap proportions. *Limitation: current market caps are used as a proxy for historical starting weights (true historical caps unavailable from Yahoo Finance).*
 """)
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1883,76 +1691,21 @@ with tab_risk:
     st.divider()
     st.subheader("Methodology")
     st.markdown(rf"""
-**Value at Risk (VaR)**
+**VaR ({confidence:.0%})** — The loss level exceeded on only {1-confidence:.0%} of trading days.
+- *Historical*: read directly from the return distribution — $\text{{VaR}} = -\text{{Percentile}}(r,\, {(1-confidence)*100:.0f}\%)$
+- *Parametric*: assumes normally distributed returns — $\text{{VaR}} = -(\mu + z_{{1-\alpha}}\,\sigma)$
 
-VaR answers the question: *what is the maximum loss I should expect on a typical bad day?*
-At a {confidence:.0%} confidence level, VaR is the loss threshold that is exceeded on only {1-confidence:.0%} of trading days.
+**CVaR** — Average loss on days VaR is breached. Always $\geq$ VaR; more sensitive to tail events.
 
-Two approaches are implemented here:
+**Drawdown** — Decline from the most recent peak: $\text{{DD}}_t = (P_t - \max_{{s\leq t}} P_s)\,/\,\max_{{s\leq t}} P_s$.
 
-- **Historical VaR** reads the loss directly from the empirical return distribution — no distributional assumption required:
+**Rolling VaR** — VaR recomputed over a sliding window. Spikes indicate periods of elevated risk.
 
-$$\text{{VaR}}_{{1-\alpha}} = -\text{{Percentile}}(r,\, (1-\alpha) \times 100)$$
+**Monte Carlo (GBM)** — Simulates future price paths using Geometric Brownian Motion with zero drift:
+$$P_t = P_{{t-1}}\cdot e^{{\varepsilon_t}},\qquad \varepsilon_t\sim\mathcal{{N}}(0,\,\hat{{\sigma}})$$
+Zero drift is used instead of historical mean returns to avoid extrapolating a bull-market bias into the forecast. The fan chart shows the 10th–90th percentile range of simulated paths.
 
-- **Parametric VaR** assumes returns are normally distributed and uses the sample mean $\mu$ and standard deviation $\sigma$:
+**P(loss > 15%)** — Share of simulated paths ending more than 15% below today's value. More informative than P(value > today), which is upward-biased by the log-normal distribution.
 
-$$\text{{VaR}}_{{1-\alpha}} = -(\mu + z_{{1-\alpha}} \cdot \sigma)$$
-
-where $z_{{1-\alpha}}$ is the standard normal quantile (e.g. $-1.645$ at 95%).
-
-**CVaR / Expected Shortfall (ES)**
-
-CVaR goes further than VaR — it measures the *average* loss on the days that VaR is breached.
-It is a coherent risk measure and better captures tail risk:
-
-$$\text{{CVaR}}_{{1-\alpha}} = -\,\mathbb{{E}}\!\left[r \;\middle|\; r < -\text{{VaR}}_{{1-\alpha}}\right]$$
-
-CVaR is always $\geq$ VaR and is more sensitive to extreme outcomes, making it preferred by risk committees.
-
-**Drawdown**
-
-Drawdown measures the decline from a historical peak. Maximum Drawdown is the worst such decline over the period:
-
-$$\text{{DD}}_t = \frac{{P_t - \max_{{s \leq t}} P_s}}{{\max_{{s \leq t}} P_s}}, \qquad \text{{Max DD}} = \min_t \text{{DD}}_t$$
-
-**Rolling VaR**
-
-The rolling VaR shows how the portfolio's downside risk has evolved through time using a sliding window.
-Spikes in rolling VaR correspond to periods of elevated volatility (e.g. market drawdowns, macro shocks).
-A stable rolling VaR indicates a consistent risk profile; a rising trend signals deteriorating conditions.
-
-**Geometric Brownian Motion (GBM)**
-
-Monte Carlo simulation generates a large number of plausible future price paths by repeatedly sampling random shocks.
-Each path evolves according to Geometric Brownian Motion — the standard continuous-time model for asset prices:
-
-$$P_t = P_{{t-1}} \cdot e^{{\varepsilon_t}}, \qquad \varepsilon_t \sim \mathcal{{N}}(0,\, \hat{{\sigma}})$$
-
-where $\hat{{\sigma}}$ is the daily volatility estimated from the historical return series of the selected period.
-After $N$ simulations, the distribution of terminal values gives a probabilistic view of the range of outcomes.
-
-**Why zero drift?**
-
-The drift term is set to zero rather than using the historical mean return. Extrapolating past returns — especially from a recent bull-market period — would bias almost all paths upward and mask genuine downside risk. Zero drift means paths spread symmetrically around today's value, driven purely by volatility. This is the conservative and intellectually honest choice for a risk tool.
-
-**Reading the fan chart**
-
-The shaded bands show the 10th, 25th, 75th and 90th percentiles of simulated paths at each point in time.
-The spread of the fan widens with the horizon — reflecting that uncertainty compounds over time.
-A high-volatility portfolio produces a much wider fan than a low-volatility one, even with identical expected returns.
-
-**P(loss > 15%)**
-
-Rather than the misleading P(value > today) — which is biased upward by the log-normal distribution's positive skew — this dashboard reports the probability that the terminal value falls more than 15% below today's level:
-
-$$P(\text{{loss}} > 15\%) = \frac{{1}}{{N}}\sum_{{i=1}}^{{N}} \mathbf{{1}}\!\left[P_T^{{(i)}} < 0.85 \cdot P_0\right]$$
-
-This is the question a risk committee actually asks: *what is the probability of a material loss?*
-
-**Model limitations**
-
-- **Constant volatility** — GBM does not model volatility clustering (GARCH effects). Real volatility spikes during crises, so tail events are likely underestimated.
-- **Normal shocks** — Real return distributions have fat tails and negative skew. Extreme losses occur more frequently than the normal distribution implies.
-- **Independent increments** — Serial correlation, momentum, and mean-reversion are not captured.
-- **Single-factor** — All randomness comes from one source. Macro regime changes, liquidity crises, and correlation breakdowns are outside the model's scope.
+*Limitations: GBM assumes constant volatility, normal shocks, and independent daily returns. Real markets exhibit volatility clustering, fat tails, and serial correlation.*
 """)
