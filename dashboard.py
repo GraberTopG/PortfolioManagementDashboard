@@ -901,9 +901,21 @@ h2, h3 {
 /* ── Dividers ────────────────────────────────────────────────────────────── */
 hr { border-color: #1C2128 !important; opacity: 1 !important; }
 
-/* ── Dataframe: hide column action menu (⋮) but keep header-click sort ──── */
-[data-testid="stDataFrame"] button {
-    display: none !important;
+/* ── Dataframe column action menu — solid background so text is readable ─── */
+[data-baseweb="popover"],
+[data-baseweb="menu"] {
+    background-color: #111519 !important;
+    border: 1px solid #263238 !important;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.6) !important;
+}
+[data-baseweb="menu"] ul,
+[data-baseweb="menu"] li,
+[data-baseweb="menu"] [role="option"] {
+    background-color: #111519 !important;
+    color: #E0E4EA !important;
+}
+[data-baseweb="menu"] [role="option"]:hover {
+    background-color: #1C2128 !important;
 }
 </style>""", unsafe_allow_html=True)
 
