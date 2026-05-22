@@ -1076,7 +1076,7 @@ with tab_overview:
         table_data["S&P 500 (SPY)"] = [spy_metrics.get(k, "—") for k in rows]
 
     df_table = pd.DataFrame(table_data).set_index("Metric")
-    render_table(df_table)
+    st.dataframe(df_table, use_container_width=True)
 
     st.divider()
 
@@ -1174,8 +1174,9 @@ with tab_port:
             wts_dict = {"Your Portfolio": wts_dict["Your Portfolio"],
                         "Equal Weight":   w_equal(n_assets),
                         **{k: v for k, v in wts_dict.items() if k != "Your Portfolio"}}
-        wts_df = pd.DataFrame(wts_dict, index=avail).map(lambda x: f"{x:.1%}")
-        render_table(wts_df)
+        wts_df = pd.DataFrame(wts_dict, index=avail) * 100
+        col_cfg = {c: st.column_config.NumberColumn(format="%.1f%%") for c in wts_df.columns}
+        st.dataframe(wts_df, use_container_width=True, column_config=col_cfg)
 
         st.divider()
 
@@ -1215,7 +1216,7 @@ with tab_port:
                 "Alpha":          f"{a:.2%}",
                 f"VaR {confidence:.0%}": f"{hist_var(s_ret, confidence):.2%}",
             })
-        render_table(pd.DataFrame(rows_s).set_index("Style"))
+        st.dataframe(pd.DataFrame(rows_s).set_index("Style"), use_container_width=True)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # TAB 5 · RISK METRICS
