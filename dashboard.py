@@ -338,6 +338,11 @@ def macd(p, fast=12, slow=26, sig=9):
     return ml, sl, ml - sl
 
 # ── Portfolio optimisation ────────────────────────────────────────────────────
+# Maximum weight any single asset may receive in optimised portfolios.
+# Prevents the solver from crowding into one stock that happened to dominate
+# the historical sample (e.g. NVDA post-2020). 40% is a standard long-only cap.
+MAX_SINGLE_W = 0.40
+
 def _port_stats(w, mu, cov):
     r = np.dot(w, mu) * AF
     v = np.sqrt(w @ cov @ w) * np.sqrt(AF)
@@ -348,7 +353,7 @@ def _opt(objective, n, extra_constraints=None):
     if extra_constraints:
         cons += extra_constraints
     res = minimize(objective, np.ones(n)/n, method="SLSQP",
-                   bounds=[(0, 1)]*n, constraints=cons)
+                   bounds=[(0, MAX_SINGLE_W)]*n, constraints=cons)
     return res.x
 
 def w_min_var(mu, cov):
@@ -419,6 +424,11 @@ def backtest_styles(prices: pd.DataFrame, min_lookback: int = 5) -> dict[str, pd
         cov = hist.cov()
         n = len(rets.columns)
 
+        # NOTE: w_market_cap() uses current (today's) market caps at every
+        # rebalancing date — a known look-ahead approximation, since historical
+        # share counts are not available from yfinance. The Market Weight line
+        # reflects the current cap structure applied backward, not true
+        # historical cap-weighted performance.
         mcw = w_market_cap(",".join(rets.columns.tolist()))
         if len(hist) >= min_lookback:
             weights = {
@@ -1621,6 +1631,30 @@ Larger companies receive larger weights, mirroring how broad index funds such
 as the S&P 500 are constructed. No optimisation is required — weights are
 determined entirely by the market's collective valuation. Current market caps
 are sourced from Yahoo Finance and held fixed across the backtest period.
+
+> **Limitation — look-ahead approximation.** Historical per-share market caps
+> are not available from Yahoo Finance, so the backtest applies *today's*
+> cap weights to all historical rebalancing dates. This introduces a mild
+> look-ahead bias: stocks with large current market caps (e.g. NVDA) receive
+> a higher weight than they would have carried in 2013. Treat the Market Weight
+> backtest line as an approximation, not a true historical cap-weighted
+> simulation.
+""")
+
+        st.divider()
+        st.markdown(r"""
+**General note on optimised weights**
+
+The Min Variance and Mean-Variance optimisers are constrained to a maximum of
+**40% in any single stock** (long-only, SLSQP). Without this cap, the solver
+routinely concentrates 50%+ into the single stock with the best in-sample
+risk-adjusted return — a textbook case of in-sample over-fitting that would
+perform very differently out-of-sample. The 40% cap is standard practice in
+institutional long-only mandates.
+
+Zero-weight allocations are mathematically normal: when a stock does not
+improve the objective function (minimum variance or maximum Sharpe), the
+solver correctly excludes it rather than forcing a small arbitrary allocation.
 """)
 
 # ─────────────────────────────────────────────────────────────────────────────
