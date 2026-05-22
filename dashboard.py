@@ -667,11 +667,16 @@ def chart_price_ta(ohlcv: pd.DataFrame, ticker: str) -> go.Figure:
         fig.add_trace(go.Scatter(x=ohlcv.index, y=band, name=name,
                                  line=dict(color="rgba(150,150,255,0.5)", dash="dot", width=1),
                                  showlegend=True), row=1, col=1)
-    # Colour bars green on up days, red on down days — visible on dark background
+    # Dollar volume (shares × price) — immune to split-adjustment inflation.
+    # yfinance auto_adjust multiplies historical share counts by the cumulative
+    # split factor, making pre-split volume look enormous vs today. Dollar volume
+    # cancels this out and is a more meaningful measure of daily liquidity.
+    dollar_vol = ohlcv["Volume"] * ohlcv["Close"]
     vol_colors = [GREEN if c >= o else RED
                   for c, o in zip(ohlcv["Close"], ohlcv["Open"])]
-    fig.add_trace(go.Bar(x=ohlcv.index, y=ohlcv["Volume"], name="Volume",
+    fig.add_trace(go.Bar(x=ohlcv.index, y=dollar_vol, name="Dollar Volume",
                          marker_color=vol_colors, opacity=0.65), row=2, col=1)
+    fig.update_yaxes(tickprefix="$", tickformat=".2s", row=2, col=1)
     fig.update_layout(template=CHART_TEMPLATE,
                       paper_bgcolor=_BG, plot_bgcolor=_PLOT,
                       title=dict(text=f"<b>{ticker} — Price & Volume</b>",
