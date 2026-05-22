@@ -602,9 +602,9 @@ def chart_ef(mu, cov, tickers, user_weights=None, user_label="Your Portfolio") -
     # ── Risk-free rate dot ────────────────────────────────────────────────────
     fig.add_trace(go.Scatter(
         x=[0], y=[RF], mode="markers+text",
-        marker=dict(size=8, color=GOLD),
+        marker=dict(size=8, color=MUTED),
         text=["Rf"], textposition="middle right",
-        textfont=dict(color=GOLD, size=10),
+        textfont=dict(color=MUTED, size=10),
         showlegend=False,
         hovertemplate=f"Risk-Free Rate: {RF:.2%}<extra></extra>",
     ))
@@ -630,8 +630,8 @@ def chart_ef(mu, cov, tickers, user_weights=None, user_label="Your Portfolio") -
 
     # ── Optimal portfolios (solid circles + direct text labels) ──────────────
     for label, r_opt, v_opt, w_opt, color in [
-        ("Min Variance",  r_mv, v_mv, w_mv, BLUE),
-        ("Mean-Variance", r_ms, v_ms, w_ms, ACCENT),
+        ("Min Variance",  r_mv, v_mv, w_mv, "#E0E4EA"),   # near-white — stands out from amber cloud
+        ("Mean-Variance", r_ms, v_ms, w_ms, ACCENT),       # Bloomberg orange
     ]:
         alloc = "<br>".join(f"{t}: {wi:.1%}" for t, wi in zip(tickers, w_opt))
         fig.add_trace(go.Scatter(
