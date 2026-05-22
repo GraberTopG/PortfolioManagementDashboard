@@ -904,49 +904,8 @@ hr { border-color: #1C2128 !important; opacity: 1 !important; }
 </style>""", unsafe_allow_html=True)
 
 
-def _parse_sort_val(v):
-    """Try to extract a float from a formatted string (%, plain number, etc.)."""
-    try:
-        return float(str(v).replace("%", "").replace("×", "").strip())
-    except ValueError:
-        return float("nan")
-
-
-def render_table(df: pd.DataFrame, sort_key: str = "") -> None:
-    """Bloomberg-styled HTML table with optional sort buttons. No Streamlit menus."""
-
-    # ── Sort controls ─────────────────────────────────────────────────────────
-    if sort_key:
-        s_col_k = f"_tsrt_col_{sort_key}"
-        s_asc_k = f"_tsrt_asc_{sort_key}"
-        if s_col_k not in st.session_state:
-            st.session_state[s_col_k] = None
-            st.session_state[s_asc_k] = True
-
-        btn_cols = st.columns([1] + [1] * len(df.columns))
-        for i, col in enumerate(df.columns):
-            active = st.session_state[s_col_k] == col
-            arrow  = (" ↑" if st.session_state[s_asc_k] else " ↓") if active else ""
-            label  = f"{col}{arrow}"
-            if btn_cols[i + 1].button(label, key=f"_btn_{sort_key}_{i}",
-                                      use_container_width=True):
-                if st.session_state[s_col_k] == col:
-                    st.session_state[s_asc_k] = not st.session_state[s_asc_k]
-                else:
-                    st.session_state[s_col_k] = col
-                    st.session_state[s_asc_k] = True
-                st.rerun()
-
-        if st.session_state[s_col_k] in df.columns:
-            sc   = st.session_state[s_col_k]
-            asc  = st.session_state[s_asc_k]
-            vals = df[sc].map(_parse_sort_val)
-            order = vals.argsort()
-            if not asc:
-                order = order[::-1]
-            df = df.iloc[list(order)]
-
-    # ── HTML render ───────────────────────────────────────────────────────────
+def render_table(df: pd.DataFrame) -> None:
+    """Bloomberg-styled static HTML table — no menus, no dropdowns."""
     th_style = (
         "background:#1C2128;color:#78909C;padding:8px 14px;"
         "text-align:left;border-bottom:1px solid #263238;"
@@ -1117,7 +1076,7 @@ with tab_overview:
         table_data["S&P 500 (SPY)"] = [spy_metrics.get(k, "—") for k in rows]
 
     df_table = pd.DataFrame(table_data).set_index("Metric")
-    render_table(df_table, sort_key="overview")
+    render_table(df_table)
 
     st.divider()
 
@@ -1216,7 +1175,7 @@ with tab_port:
                         "Equal Weight":   w_equal(n_assets),
                         **{k: v for k, v in wts_dict.items() if k != "Your Portfolio"}}
         wts_df = pd.DataFrame(wts_dict, index=avail).map(lambda x: f"{x:.1%}")
-        render_table(wts_df, sort_key="alloc")
+        render_table(wts_df)
 
         st.divider()
 
@@ -1256,7 +1215,7 @@ with tab_port:
                 "Alpha":          f"{a:.2%}",
                 f"VaR {confidence:.0%}": f"{hist_var(s_ret, confidence):.2%}",
             })
-        render_table(pd.DataFrame(rows_s).set_index("Style"), sort_key="styles")
+        render_table(pd.DataFrame(rows_s).set_index("Style"))
 
 # ─────────────────────────────────────────────────────────────────────────────
 # TAB 5 · RISK METRICS
