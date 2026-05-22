@@ -767,7 +767,7 @@ def chart_mc(paths, label, last_val) -> go.Figure:
 def chart_corr_heatmap(prices: pd.DataFrame) -> go.Figure:
     corr = prices.pct_change().dropna().corr()
     # Diverging scale: dark burgundy (negative) → steel grey (zero) → deep navy (positive)
-    bbg_div = [[0.0, "#B71C1C"], [0.5, "#37474F"], [1.0, "#1565C0"]]
+    bbg_div = [[0.0, "#B71C1C"], [0.5, "#37474F"], [1.0, "#FF8C00"]]
     fig = px.imshow(corr, text_auto=".2f", color_continuous_scale=bbg_div,
                     zmin=-1, zmax=1, title="Pairwise Return Correlation")
     fig.update_layout(
