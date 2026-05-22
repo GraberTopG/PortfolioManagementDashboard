@@ -583,77 +583,103 @@ def chart_ef(mu, cov, tickers) -> go.Figure:
     vols, rets, srs, wts = efficient_frontier_mc(mu, cov, n=600)
     hover = ["<br>".join(f"{t}: {w:.1%}" for t, w in zip(tickers, ws)) for ws in wts]
 
+    # Clip y-axis to the 98th percentile of random portfolios so outlier
+    # stocks don't blow up the scale (common with high-momentum tech names)
+    y_max = np.percentile(rets, 98) * 1.25
+    y_min = min(min(rets) * 1.1, 0)
+
     fig = go.Figure()
-    # Scatter cloud
+
+    # ── Scatter cloud (random portfolios) ────────────────────────────────────
     fig.add_trace(go.Scatter(
         x=vols, y=rets, mode="markers",
-        marker=dict(color=srs, colorscale="Viridis", size=5, opacity=0.7,
-                    colorbar=dict(title="Sharpe Ratio", thickness=12)),
-        text=hover, hovertemplate="Vol: %{x:.2%}<br>Return: %{y:.2%}<br>%{text}<extra>Random Portfolio</extra>",
+        marker=dict(
+            color=srs, colorscale="Blues",
+            reversescale=False,
+            size=5, opacity=0.55,
+            colorbar=dict(title="Sharpe", thickness=10, len=0.55,
+                          tickformat=".1f"),
+        ),
+        text=hover,
+        hovertemplate="Vol: %{x:.2%}<br>Return: %{y:.2%}<br>%{text}"
+                      "<extra>Random Portfolio</extra>",
         name="Random Portfolios",
     ))
 
-    # Individual stocks
-    for t in tickers:
-        idx = list(tickers).index(t)
-        sv = np.sqrt(cov.iloc[idx, idx]) * np.sqrt(AF)
-        sr_val = mu.iloc[idx] * AF
-        fig.add_trace(go.Scatter(
-            x=[sv], y=[sr_val], mode="markers+text",
-            marker=dict(symbol="diamond", size=10, color="white", opacity=0.7),
-            text=[t], textposition="top center",
-            textfont=dict(size=9, color="white"),
-            name=t, showlegend=False,
-            hovertemplate=f"{t}<br>Vol: {sv:.2%}<br>Return: {sr_val:.2%}<extra></extra>",
-        ))
-
-    # Optimal portfolios + Capital Market Line
-    opt_points = {
-        "Min Variance":  (w_min_var(mu, cov),  BLUE),
-        "Max Sharpe":    (w_max_sharpe(mu, cov), ACCENT),
-    }
-    for label, (w, color) in opt_points.items():
-        r_opt, v_opt, _ = _port_stats(w, mu.values, cov.values)
-        alloc = "<br>".join(f"{t}: {wi:.1%}" for t, wi in zip(tickers, w))
-        fig.add_trace(go.Scatter(
-            x=[v_opt], y=[r_opt], mode="markers",
-            marker=dict(symbol="star", size=20, color=color,
-                        line=dict(color="white", width=1)),
-            name=label,
-            hovertemplate=f"{label}<br>Vol: {v_opt:.2%}<br>Return: {r_opt:.2%}<br>{alloc}<extra></extra>",
-        ))
-
-    # Capital Market Line through Max Sharpe
-    w_ms = w_max_sharpe(mu, cov)
+    # ── Capital Market Line (subtle) ──────────────────────────────────────────
+    w_ms  = w_max_sharpe(mu, cov)
     r_ms, v_ms, _ = _port_stats(w_ms, mu.values, cov.values)
     slope = (r_ms - RF) / v_ms
-    cml_x = [0, max(vols) * 1.1]
+    cml_x = [0, max(vols) * 1.05]
     cml_y = [RF, RF + slope * cml_x[1]]
-    fig.add_trace(go.Scatter(x=cml_x, y=cml_y, mode="lines",
-                             line=dict(color=ACCENT, dash="dash", width=1.2),
-                             name="Capital Market Line",
-                             hoverinfo="skip"))
+    fig.add_trace(go.Scatter(
+        x=cml_x, y=cml_y, mode="lines",
+        line=dict(color="rgba(255,255,255,0.25)", dash="dot", width=1.5),
+        name="Capital Market Line", hoverinfo="skip",
+    ))
 
-    # Risk-free rate marker
-    fig.add_trace(go.Scatter(x=[0], y=[RF], mode="markers+text",
-                             marker=dict(symbol="circle", size=10, color=GOLD),
-                             text=["Rf"], textposition="top right",
-                             textfont=dict(color=GOLD),
-                             name="Risk-Free Rate", showlegend=False,
-                             hovertemplate=f"Risk-Free Rate: {RF:.2%}<extra></extra>"))
+    # ── Risk-free rate dot ────────────────────────────────────────────────────
+    fig.add_trace(go.Scatter(
+        x=[0], y=[RF], mode="markers+text",
+        marker=dict(size=8, color=GOLD),
+        text=["Rf"], textposition="middle right",
+        textfont=dict(color=GOLD, size=10),
+        showlegend=False,
+        hovertemplate=f"Risk-Free Rate: {RF:.2%}<extra></extra>",
+    ))
+
+    # ── Individual stocks (only those within chart bounds) ────────────────────
+    for t in tickers:
+        idx  = list(tickers).index(t)
+        sv   = np.sqrt(cov.iloc[idx, idx]) * np.sqrt(AF)
+        rv   = mu.iloc[idx] * AF
+        if rv > y_max:          # skip extreme outliers
+            continue
+        alloc_t = f"Vol: {sv:.2%}  |  Return: {rv:.2%}"
+        fig.add_trace(go.Scatter(
+            x=[sv], y=[rv], mode="markers+text",
+            marker=dict(symbol="circle", size=8,
+                        color="rgba(255,255,255,0.12)",
+                        line=dict(color="rgba(255,255,255,0.6)", width=1.2)),
+            text=[t], textposition="top center",
+            textfont=dict(size=9, color="rgba(255,255,255,0.65)"),
+            showlegend=False,
+            hovertemplate=f"<b>{t}</b><br>{alloc_t}<extra></extra>",
+        ))
+
+    # ── Optimal portfolios (solid circles + direct text labels) ──────────────
+    w_mv = w_min_var(mu, cov)
+    r_mv, v_mv, _ = _port_stats(w_mv, mu.values, cov.values)
+
+    for label, r_opt, v_opt, w_opt, color in [
+        ("Min Variance",  r_mv, v_mv, w_mv, BLUE),
+        ("Mean-Variance", r_ms, v_ms, w_ms, ACCENT),
+    ]:
+        alloc = "<br>".join(f"{t}: {wi:.1%}" for t, wi in zip(tickers, w_opt))
+        fig.add_trace(go.Scatter(
+            x=[v_opt], y=[r_opt], mode="markers+text",
+            marker=dict(symbol="circle", size=18, color=color,
+                        line=dict(color="white", width=2)),
+            text=[label], textposition="top right",
+            textfont=dict(size=11, color=color),
+            name=label,
+            hovertemplate=(f"<b>{label}</b><br>Vol: {v_opt:.2%}<br>"
+                           f"Return: {r_opt:.2%}<br><br>{alloc}<extra></extra>"),
+        ))
 
     fig.update_layout(
         template=CHART_TEMPLATE, height=560,
-        title="Efficient Frontier · Monte Carlo Simulation",
+        title="Efficient Frontier — Monte Carlo Simulation",
         xaxis=dict(title="Annualised Volatility", tickformat=".0%"),
-        yaxis=dict(title="Annualised Return", tickformat=".0%"),
+        yaxis=dict(title="Annualised Return", tickformat=".0%",
+                   range=[y_min, y_max]),
+        legend=dict(orientation="v", yanchor="top", y=0.98,
+                    xanchor="left", x=0.01,
+                    bgcolor="rgba(0,0,0,0.35)", borderwidth=0),
         annotations=[dict(
-            x=0.01, y=0.99, xref="paper", yref="paper", showarrow=False,
-            text=("Each dot = one random portfolio<br>"
-                  "Star marker = analytically optimal portfolios<br>"
-                  "Diamond marker = individual stocks"),
-            align="left", font=dict(size=10, color="#aaa"),
-            bgcolor="rgba(0,0,0,0.4)", borderpad=6,
+            x=0.99, y=0.02, xref="paper", yref="paper", showarrow=False,
+            text="Each dot represents one randomly weighted portfolio.",
+            align="right", font=dict(size=10, color="#888"),
         )],
     )
     return fig
