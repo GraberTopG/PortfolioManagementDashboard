@@ -343,10 +343,10 @@ def macd(p, fast=12, slow=26, sig=9):
 # the historical sample (e.g. NVDA post-2020). 40% is a standard long-only cap.
 MAX_SINGLE_W = 0.40
 
-def _port_stats(w, mu, cov):
+def _port_stats(w, mu, cov, rf=RF):
     r = np.dot(w, mu) * AF
     v = np.sqrt(w @ cov @ w) * np.sqrt(AF)
-    return r, v, (r - RF) / v if v else np.nan
+    return r, v, (r - rf) / v if v else np.nan
 
 def _opt(objective, n, extra_constraints=None):
     cons = [{"type": "eq", "fun": lambda w: w.sum() - 1}]
@@ -359,8 +359,9 @@ def _opt(objective, n, extra_constraints=None):
 def w_min_var(mu, cov):
     return _opt(lambda w: _port_stats(w, mu, cov)[1], len(mu))
 
-def w_max_sharpe(mu, cov):
-    return _opt(lambda w: -_port_stats(w, mu, cov)[2], len(mu))
+def w_max_sharpe(mu, cov, rf=RF):
+    """Tangency portfolio: maximise Sharpe using the given risk-free rate."""
+    return _opt(lambda w: -_port_stats(w, mu, cov, rf)[2], len(mu))
 
 def w_risk_parity(cov):
     n = len(cov)
@@ -393,6 +394,24 @@ def w_market_cap(tickers_csv: str) -> np.ndarray:
     caps = np.where(caps <= 0, 1.0, caps)
     return caps / caps.sum()
 
+@st.cache_data(ttl=3600, show_spinner=False)
+def load_rf_series(start: str, end: str) -> pd.Series:
+    """3-month T-bill annualised rate as a decimal time series (^IRX / 100).
+    Used to supply the historically correct risk-free rate to the Max-Sharpe
+    optimiser at each backtest rebalancing date.
+    Falls back to the global RF constant if data is unavailable."""
+    try:
+        raw = yf.download("^IRX", start=start, end=end,
+                          progress=False, auto_adjust=True)
+        if raw.empty:
+            return pd.Series(dtype=float)
+        close = raw["Close"] if "Close" in raw.columns else raw.iloc[:, 0]
+        if isinstance(close, pd.DataFrame):
+            close = close.iloc[:, 0]
+        return (close / 100).dropna()
+    except Exception:
+        return pd.Series(dtype=float)
+
 def efficient_frontier_mc(mu, cov, n=500):
     n_assets = len(mu)
     vols, rets, srs, wts = [], [], [], []
@@ -403,7 +422,9 @@ def efficient_frontier_mc(mu, cov, n=500):
     return np.array(vols), np.array(rets), np.array(srs), wts
 
 # ── Portfolio backtest ────────────────────────────────────────────────────────
-def backtest_styles(prices: pd.DataFrame, min_lookback: int = 63) -> dict[str, pd.Series]:
+def backtest_styles(prices: pd.DataFrame,
+                    min_lookback: int = 63,
+                    rf_series: pd.Series | None = None) -> dict[str, pd.Series]:
     """
     Walk-forward backtest with monthly rebalancing for EW, Min Variance,
     Mean-Variance and Risk Parity (inverse-vol). Market Weight is handled
@@ -412,6 +433,10 @@ def backtest_styles(prices: pd.DataFrame, min_lookback: int = 63) -> dict[str, p
     min_lookback (default 63 ≈ 3 months): minimum number of daily returns
     required before the optimiser is trusted. Below this threshold all
     optimised strategies fall back to equal weight.
+
+    rf_series: annualised T-bill rate as a decimal time series. When provided,
+    the Max-Sharpe optimiser uses the historically correct RF rate at each
+    rebalancing date rather than the fixed global constant.
     """
     rets = prices.pct_change().dropna()
     month_starts = rets.resample("MS").first().index.tolist()
@@ -433,14 +458,22 @@ def backtest_styles(prices: pd.DataFrame, min_lookback: int = 63) -> dict[str, p
         cov  = hist.cov()
         n    = len(rets.columns)
 
+        # Historically correct RF rate at this rebalancing date (no look-ahead:
+        # asof() returns the last known value on or before the rebal date)
+        if rf_series is not None and not rf_series.empty and rebal >= rf_series.index[0]:
+            rf_t = float(rf_series.asof(rebal))
+        else:
+            rf_t = RF
+
         if len(hist) >= min_lookback:
             weights = {
                 "Equal Weight":  w_equal(n),
                 # Min Variance: objective uses only cov, mu is ignored
                 "Min Variance":  w_min_var(mu, cov),
                 # Mean-Variance: uses hist.mean() as expected returns —
-                # no look-ahead, but sample means are noisy estimators
-                "Mean-Variance": w_max_sharpe(mu, cov),
+                # no look-ahead, but sample means are noisy estimators.
+                # RF rate is the historically correct T-bill rate at rebal date.
+                "Mean-Variance": w_max_sharpe(mu, cov, rf=rf_t),
                 # Inverse-vol weighting (simplified Risk Parity):
                 # vol estimated from expanding window; improves as data accumulates
                 "Risk Parity":   w_inv_vol(hist),
@@ -776,7 +809,7 @@ def chart_ef(mu, cov, tickers, user_weights=None, user_label="Your Portfolio") -
         template=CHART_TEMPLATE,
         paper_bgcolor=_BG, plot_bgcolor=_PLOT,
         height=580,
-        title=dict(text="<b>Efficient Frontier — Feasible Set</b>",
+        title=dict(text="<b>Efficient Frontier</b>",
                    font=dict(size=14, color="#E0E4EA", family=_SERIF)),
         font=dict(family=_FONT, color="#78909C"),
         legend=dict(orientation="v", yanchor="top", y=0.98,
@@ -1133,6 +1166,9 @@ if not avail:
 
 prices       = _close[avail].dropna(how="all")
 bench_prices = _close[[t for t in BENCHMARK_TICKERS if t in _close.columns]].dropna(how="all")
+
+# Historical 3-month T-bill rate for time-varying RF in the backtest optimiser
+rf_hist = load_rf_series(str(start_dt), str(end_dt))
 
 # Slider values are defined inside their tabs but read here first via session state
 confidence = st.session_state.get("var_conf",  0.95)
@@ -1528,7 +1564,7 @@ with tab_port:
         st.subheader("Portfolio Styles — Backtested Performance")
 
         with st.spinner("Backtesting portfolio styles…"):
-            style_rets = backtest_styles(prices)
+            style_rets = backtest_styles(prices, rf_series=rf_hist)
         # Prepend the user's portfolio so it appears first in the legend
         style_rets = {"Your Portfolio": (rets_df * user_w).sum(axis=1)} | style_rets
         # In Equal Weight mode Your Portfolio == Equal Weight — drop the duplicate
@@ -1661,6 +1697,14 @@ Capital Market Line touches the efficient frontier:
         st.markdown(r"""
 **Walk-forward / no look-ahead.** Both $\mu$ and $\Sigma$ are estimated from
 the expanding window up to each rebalancing date.
+
+**Time-varying risk-free rate.** The backtest uses the 3-month US Treasury
+Bill rate (^IRX) prevailing at each rebalancing date — not today's rate.
+Using a fixed modern rate of 5.25% throughout would be look-ahead bias: from
+2009 to 2022 the T-bill rate was effectively 0–2%, making the historical
+hurdle rate very different and shifting the tangency portfolio toward
+higher-return assets. The static Efficient Frontier chart uses the current
+rate ($r_f = 5.25\%$) as it represents the present investment opportunity set.
 
 **Known limitation — estimation error in expected returns.** $\mu$ is
 approximated by the sample mean of historical daily returns, which is an
