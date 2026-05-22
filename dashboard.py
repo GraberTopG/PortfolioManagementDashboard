@@ -573,12 +573,15 @@ def chart_ef(mu, cov, tickers, user_weights=None, user_label="Your Portfolio") -
         x=vols, y=rets, mode="markers",
         marker=dict(
             color=srs,
-            colorscale=[[0.0, "#0D1B2A"], [0.5, "#1A3A5C"], [1.0, "#00A8E8"]],
+            # Warm amber gradient: near-black (low Sharpe) → Bloomberg amber (high Sharpe)
+            # Distinct from both the blue Min Variance and orange Mean-Variance markers
+            colorscale=[[0.0, "#0A0800"], [0.5, "#7A4800"], [1.0, "#CC7000"]],
             reversescale=False,
-            size=5, opacity=0.65,
+            size=5, opacity=0.75,
             colorbar=dict(title="Sharpe", thickness=10, len=0.55,
                           tickformat=".1f",
-                          tickfont=dict(color=_TICK, family=_MONO)),
+                          tickfont=dict(color=_TICK, family=_FONT),
+                          title_font=dict(color=_TICK, family=_FONT)),
         ),
         text=hover,
         hovertemplate="Vol: %{x:.2%}<br>Return: %{y:.2%}<br>%{text}"
