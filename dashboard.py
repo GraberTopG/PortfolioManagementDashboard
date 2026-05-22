@@ -274,6 +274,15 @@ def beta_alpha(r: pd.Series, bench: pd.Series) -> tuple[float, float]:
 def win_rate(r: pd.Series) -> float:
     return (r > 0).mean()
 
+def _fmt_num(val, fmt: str) -> str:
+    """Format a scalar; return '-' for NaN / inf."""
+    try:
+        if np.isnan(val) or np.isinf(val):
+            return "-"
+        return fmt.format(val)
+    except (TypeError, ValueError):
+        return "-"
+
 def full_metrics(r: pd.Series, prices: pd.Series, bench_r: pd.Series,
                  conf: float = 0.95, port_w: np.ndarray | None = None,
                  bench_w: np.ndarray | None = None) -> dict:
@@ -284,15 +293,15 @@ def full_metrics(r: pd.Series, prices: pd.Series, bench_r: pd.Series,
     return {
         "Ann. Return":       f"{ann_return(r):.2%}",
         "Ann. Volatility":   f"{ann_vol(r):.2%}",
-        "Sharpe Ratio":      f"{sharpe(r):.2f}",
-        "Sortino Ratio":     f"{sortino(r):.2f}",
-        "Calmar Ratio":      f"{calmar(r, prices):.2f}",
+        "Sharpe Ratio":      _fmt_num(sharpe(r),  "{:.2f}"),
+        "Sortino Ratio":     _fmt_num(sortino(r), "{:.2f}"),
+        "Calmar Ratio":      _fmt_num(calmar(r, prices), "{:.2f}"),
         "Max Drawdown":      f"{max_dd(prices):.2%}",
-        "Beta (vs SPY)":     f"{b:.2f}",
-        "Alpha (vs SPY)":    f"{a:.2%}",
-        "Tracking Error":    f"{te:.2%}",
-        "Information Ratio": f"{ir:.2f}",
-        "Active Share":      f"{ash:.1%}" if not np.isnan(ash) else "-",
+        "Beta (vs SPY)":     _fmt_num(b, "{:.2f}"),
+        "Alpha (vs SPY)":    _fmt_num(a, "{:.2%}"),
+        "Tracking Error":    _fmt_num(te, "{:.2%}") if te > 1e-10 else "-",
+        "Information Ratio": _fmt_num(ir, "{:.2f}"),
+        "Active Share":      _fmt_num(ash, "{:.1%}"),
         "Win Rate":          f"{win_rate(r):.1%}",
         f"VaR {conf:.0%}":   f"{hist_var(r, conf):.2%}",
         f"CVaR {conf:.0%}":  f"{cvar(r, conf):.2%}",
@@ -1560,20 +1569,34 @@ with tab_port:
         # ── Strategy methodology ──────────────────────────────────────────────
         st.subheader("Methodology")
         st.markdown(f"""
-All strategies are constrained to full investment (weights sum to 1), long-only, and a 40% single-stock cap.
-The backtest uses a walk-forward expanding window — at each monthly rebalancing date, only historical data up to that date is used.
+All strategies are constrained to full investment, long-only, and a 40% single-stock cap.
+The backtest is walk-forward: at each monthly rebalancing date only data up to that date is used.
 Data starts from **{_common_start.strftime('%d %b %Y')}** (earliest common date across all selected tickers).
-
-**1. Equal Weight** — $w_i = 1/N$. Rebalanced monthly to restore equal weights as prices drift. No estimation required.
-
-**2. Minimum Variance** — Minimises portfolio volatility using the historical covariance matrix. Only $\\Sigma$ is needed; expected returns are not used. Zero-weight allocations are normal: stocks that do not reduce portfolio volatility are excluded.
-
-**3. Mean-Variance (Max Sharpe)** — Maximises the Sharpe ratio using historical means and covariances. The backtest uses the 3-month T-bill rate (^IRX) prevailing at each rebalancing date; the static Efficient Frontier uses the current rate (5.25%). *Limitation: historical sample means are noisy, so the optimiser tends to concentrate in whichever stock happened to perform best in-sample.*
-
-**4. Risk Parity (Inverse Volatility)** — $w_i \\propto 1/\\hat{{\\sigma}}_i$. Assets with lower volatility receive higher weights so each contributes roughly equal risk. Volatility is estimated from the expanding window; weights improve in stability as more data accumulates. *Note: this is inverse-vol weighting, a simplified version of true risk parity.*
-
-**5. Market Weight (Buy-and-Hold)** — Initial weights proportional to current market caps, then held without rebalancing. A market-cap portfolio never needs rebalancing: price appreciation automatically keeps weights at market-cap proportions. *Limitation: current market caps are used as a proxy for historical starting weights (true historical caps unavailable from Yahoo Finance).*
 """)
+
+        st.markdown("**1. Equal Weight**")
+        st.latex(r"w_i = \frac{1}{N}")
+        st.markdown("Rebalanced monthly to restore equal weights as prices drift. No estimation required.")
+
+        st.markdown("**2. Minimum Variance**")
+        st.latex(r"\min_w \; w^\top \Sigma\, w \quad \text{s.t.} \; \mathbf{1}^\top w=1,\; 0\le w_i\le 0.4")
+        st.markdown("Only the covariance matrix $\\Sigma$ is needed — no return forecasts. Zero-weight allocations are normal.")
+
+        st.markdown("**3. Mean-Variance (Max Sharpe)**")
+        st.latex(r"\max_w \; \frac{w^\top\mu - r_f}{\sqrt{w^\top\Sigma\, w}} \quad \text{s.t.} \; \mathbf{1}^\top w=1,\; 0\le w_i\le 0.4")
+        st.markdown("The backtest uses the historical 3-month T-bill rate (^IRX) at each rebalancing date. "
+                    "*Limitation: sample means are noisy estimators, so the optimiser tends to concentrate in whichever stock performed best in-sample.*")
+
+        st.markdown("**4. Risk Parity (Inverse Volatility)**")
+        st.latex(r"w_i = \frac{1/\hat\sigma_i}{\sum_j 1/\hat\sigma_j}")
+        st.markdown("Lower-volatility assets receive higher weights so each stock contributes roughly equal risk. "
+                    "Volatility is estimated from the expanding window. "
+                    "*Note: this is inverse-vol weighting, a simplified form of true risk parity.*")
+
+        st.markdown("**5. Market Weight (Buy-and-Hold)**")
+        st.latex(r"w_i(0) = \frac{\mathrm{MCap}_i}{\sum_j \mathrm{MCap}_j}, \qquad V(t)=\sum_i w_i(0)\prod_{s=1}^t(1+r_i^s)")
+        st.markdown("Held without rebalancing: price appreciation naturally keeps weights at market-cap proportions. "
+                    "*Limitation: current market caps are used as a proxy for historical starting weights.*")
 
 # ─────────────────────────────────────────────────────────────────────────────
 # TAB 5 · RISK METRICS
