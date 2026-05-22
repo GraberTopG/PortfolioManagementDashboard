@@ -1653,6 +1653,9 @@ with tab_port:
         st.download_button("Download as CSV", _df_styles.to_csv(),
                            file_name="style_performance.csv", mime="text/csv")
 
+        st.subheader("Annual Returns by Strategy")
+        render_annual_returns(style_rets)
+
         st.divider()
 
         # ── Efficient Frontier ────────────────────────────────────────────────
@@ -1681,12 +1684,6 @@ with tab_port:
         render_table(wts_df)
         st.download_button("Download as CSV", wts_df.to_csv(),
                            file_name="portfolio_allocations.csv", mime="text/csv")
-
-        st.divider()
-
-        # ── Annual returns grid ───────────────────────────────────────────────
-        st.subheader("Annual Returns by Strategy")
-        render_annual_returns(style_rets)
 
         st.divider()
 
