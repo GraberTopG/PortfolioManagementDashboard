@@ -7,7 +7,7 @@ Tabs:
   1. Overview        – portfolio metrics vs S&P 500, cumulative returns, benchmark comparison
   2. Technical       – candlestick, MAs, Bollinger, RSI, MACD  (ticker selector inside)
   3. Correlation     – heatmap + rolling pairwise correlation
-  4. Portfolio       – efficient frontier, style comparison (EW / MinVar / MaxSharpe / RiskParity / InvVol)
+  4. Portfolio       – efficient frontier, style comparison (EW / MinVar / MeanVariance / RiskParity)
   5. Risk Metrics    – portfolio VaR/CVaR/drawdown, then individual stock drill-down
   6. Monte Carlo     – portfolio GBM simulation, then single-stock simulation
 
@@ -429,7 +429,7 @@ def backtest_styles(prices: pd.DataFrame, min_lookback: int = 30) -> dict[str, p
     # append end of series
     rebal_dates = [d for d in month_starts if d in rets.index or d > rets.index[0]]
 
-    style_names = ["Equal Weight", "Min Variance", "Max Sharpe", "Risk Parity", "Inv. Volatility"]
+    style_names = ["Equal Weight", "Min Variance", "Mean-Variance", "Risk Parity"]
     port_rets = {s: pd.Series(dtype=float) for s in style_names}
 
     for i, rebal in enumerate(rebal_dates):
@@ -448,9 +448,8 @@ def backtest_styles(prices: pd.DataFrame, min_lookback: int = 30) -> dict[str, p
             weights = {
                 "Equal Weight":  w_equal(n),
                 "Min Variance":  w_min_var(mu, cov),
-                "Max Sharpe":    w_max_sharpe(mu, cov),
-                "Risk Parity":   w_risk_parity(cov.values),
-                "Inv. Volatility": w_inv_vol(hist),
+                "Mean-Variance": w_max_sharpe(mu, cov),   # tangency portfolio
+                "Risk Parity":   w_inv_vol(hist),          # inverse-volatility weighting
             }
         else:
             ew = w_equal(n)
@@ -663,8 +662,10 @@ def chart_ef(mu, cov, tickers) -> go.Figure:
 def chart_styles_cumret(style_rets: dict) -> go.Figure:
     series = {s: (1 + r).cumprod() for s, r in style_rets.items() if not r.empty}
     colors_map = {
-        "Equal Weight": ACCENT, "Min Variance": BLUE,
-        "Max Sharpe": GOLD, "Risk Parity": "#ff8c00", "Inv. Volatility": "#c084fc",
+        "Equal Weight":  ACCENT,
+        "Min Variance":  BLUE,
+        "Mean-Variance": GOLD,
+        "Risk Parity":   "#ff8c00",
     }
     fig = go.Figure()
     for name, p in series.items():
@@ -973,11 +974,10 @@ with tab_port:
         # ── Optimal portfolio weights table ───────────────────────────────────
         st.subheader("Optimal Portfolio Allocations")
         wts_dict = {
-            "Equal Weight":   w_equal(n_assets),
-            "Min Variance":   w_min_var(mu, cov),
-            "Max Sharpe":     w_max_sharpe(mu, cov),
-            "Risk Parity":    w_risk_parity(cov.values),
-            "Inv. Volatility":w_inv_vol(rets_df),
+            "Equal Weight":  w_equal(n_assets),
+            "Min Variance":  w_min_var(mu, cov),
+            "Mean-Variance": w_max_sharpe(mu, cov),   # tangency portfolio = Max Sharpe
+            "Risk Parity":   w_inv_vol(rets_df),       # inverse-volatility weighting
         }
         wts_df = pd.DataFrame(wts_dict, index=avail).applymap(lambda x: f"{x:.1%}")
         st.dataframe(wts_df, use_container_width=True)
@@ -988,71 +988,75 @@ with tab_port:
         # ── Strategy methodology ──────────────────────────────────────────────
         with st.expander("Strategy methodology — formulas and intuition"):
             st.markdown("""
-Five portfolio construction strategies are compared. All optimisations are
+Four portfolio construction strategies are compared. All optimisations are
 solved subject to **full investment** (weights sum to 1) and **long-only**
-constraints (no short selling).
+constraints (no short selling). $N$ denotes the number of assets, $\\Sigma$
+the covariance matrix of returns, and $\\mu$ the vector of mean returns.
 
 ---
 #### 1. Equal Weight (1/N)
-The simplest possible rule: every asset receives the same allocation.
+> *Invest an equal proportion in every asset.*
 """)
-            st.latex(r"w_i = \frac{1}{N} \qquad \forall\, i = 1, \ldots, N")
+            st.latex(r"w_i = \frac{1}{N} \qquad \forall\; i = 1, \ldots, N")
             st.markdown("""
-No estimation of expected returns or covariances is needed. Research (DeMiguel
-et al., 2009) shows it is surprisingly hard to beat out-of-sample.
+No estimation of expected returns or covariances is required. Research
+(DeMiguel et al., 2009) shows it is surprisingly hard to beat out-of-sample —
+it benefits from maximum diversification and has zero estimation error.
 
 ---
 #### 2. Minimum Variance
-Finds the portfolio with the lowest possible portfolio volatility, ignoring
-expected returns entirely.
+> *Minimise portfolio volatility regardless of expected returns.*
 """)
             st.latex(r"""
-\min_{w} \quad w^\top \Sigma\, w \\[6pt]
-\text{subject to} \quad \mathbf{1}^\top w = 1, \quad w_i \ge 0
+\min_{w} \;\; w^\top \Sigma\, w \qquad
+\text{subject to} \;\; \mathbf{1}^\top w = 1,\;\; w_i \ge 0
 """)
             st.markdown(r"""
-$\Sigma$ is the $N \times N$ covariance matrix of daily returns. The solution
-concentrates in low-volatility, low-correlation assets.
+The solution concentrates in low-volatility, low-correlation assets. It is
+the leftmost point on the efficient frontier and requires only the covariance
+matrix (no return forecasts needed).
 
 ---
-#### 3. Maximum Sharpe (Tangency Portfolio)
-Maximises the ratio of excess return to portfolio volatility — the
-**Sharpe ratio**.
+#### 3. Mean-Variance (Tangency Portfolio)
+> *Find the portfolio with the best return per unit of risk.*
+
+The general Mean-Variance framework (Markowitz, 1952) maximises expected
+portfolio return for a given level of variance:
 """)
             st.latex(r"""
-\max_{w} \quad \frac{w^\top \mu - r_f}{\sqrt{w^\top \Sigma\, w}} \\[6pt]
-\text{subject to} \quad \mathbf{1}^\top w = 1, \quad w_i \ge 0
+\max_{w} \;\; \mathbb{E}[R_p] - \frac{k}{2}\,\mathrm{var}(R_p)
+\qquad \text{subject to} \;\; \mathbf{1}^\top w = 1,\;\; w_i \ge 0
 """)
             st.markdown(r"""
-$\mu$ is the vector of annualised mean returns; $r_f$ is the risk-free rate
-($r_f = 5.25\%$). In Mean–Variance space this portfolio lies at the tangency
-point of the Capital Market Line with the efficient frontier.
+Different values of the risk-aversion parameter $k$ trace out the entire
+efficient frontier. The **tangency portfolio** is the specific point where the
+Capital Market Line touches the frontier — equivalently, it **maximises the
+Sharpe ratio**:
+""")
+            st.latex(r"""
+\max_{w} \;\; \frac{w^\top \mu - r_f}{\sqrt{w^\top \Sigma\, w}}
+\qquad \text{subject to} \;\; \mathbf{1}^\top w = 1,\;\; w_i \ge 0
+""")
+            st.markdown(r"""
+$r_f = 5.25\%$ is the risk-free rate. This is the portfolio implemented here:
+**Mean-Variance optimisation solved as a Maximum Sharpe problem.**
 
 ---
 #### 4. Risk Parity
-Each asset contributes an **equal share** of total portfolio risk.
-""")
-            st.latex(r"""
-RC_i = w_i \cdot \frac{(\Sigma w)_i}{\sigma_p} = \frac{\sigma_p}{N}
-\qquad \forall\, i
-""")
-            st.markdown(r"""
-where $\sigma_p = \sqrt{w^\top \Sigma\, w}$ is portfolio volatility and
-$RC_i$ is asset $i$'s risk contribution. The solution is found numerically by
-minimising the variance of risk contributions across all assets. Risk parity
-implicitly tilts towards low-volatility assets (bonds in a mixed portfolio).
+> *Weight each asset inversely proportional to its volatility.*
 
----
-#### 5. Inverse Volatility
-A simpler approximation of risk parity that ignores correlations: weight each
-asset in inverse proportion to its individual volatility.
+Each asset $i$ receives a weight proportional to $1/\sigma_i$, normalised so
+weights sum to one:
 """)
             st.latex(r"""
 w_i = \frac{1/\sigma_i}{\displaystyle\sum_{j=1}^{N} 1/\sigma_j}
 """)
             st.markdown(r"""
-$\sigma_i$ is the annualised volatility of asset $i$. This rule requires no
-matrix inversion and performs well when correlations are similar across assets.
+$\sigma_i$ is the annualised volatility of asset $i$. Assets with high
+volatility receive smaller weights; low-volatility assets receive larger
+weights. The goal is for every asset to contribute **equal risk** to the
+portfolio rather than equal capital. This rule requires no matrix inversion and
+no return forecasts.
 """)
 
         st.divider()
