@@ -853,13 +853,13 @@ h2, h3 {
 .mvalue {
     font-family: 'IBM Plex Serif', Georgia, serif !important;
     font-size: 1.35rem;
-    font-weight: 400;
-    color: #E0E4EA;
+    font-weight: 600;
+    color: #FF8C00;
     font-variant-numeric: tabular-nums;
     letter-spacing: 0.01em;
 }
-.mpos { color: #00C853 !important; }
-.mneg { color: #78909C !important; }
+.mpos { color: #FF8C00 !important; }
+.mneg { color: #FF8C00 !important; }
 
 /* ── Sidebar ─────────────────────────────────────────────────────────────── */
 [data-testid="stSidebar"] {
