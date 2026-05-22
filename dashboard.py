@@ -627,7 +627,7 @@ def chart_rsi_macd(prices: pd.Series, ticker: str) -> go.Figure:
     return fig
 
 
-def chart_ef(mu, cov, tickers) -> go.Figure:
+def chart_ef(mu, cov, tickers, user_weights=None, user_label="Your Portfolio") -> go.Figure:
     vols, rets, srs, wts = efficient_frontier_mc(mu, cov, n=600)
     hover = ["<br>".join(f"{t}: {w:.1%}" for t, w in zip(tickers, ws)) for ws in wts]
 
@@ -720,6 +720,22 @@ def chart_ef(mu, cov, tickers) -> go.Figure:
             hovertemplate=(f"<b>{label}</b><br>Vol: {v_opt:.2%}<br>"
                            f"Return: {r_opt:.2%}<br><br>{alloc}<extra></extra>"),
         ))
+
+    # ── User's custom portfolio (gold diamond — only shown when Custom weights set) ──
+    if user_weights is not None:
+        r_u, v_u, _ = _port_stats(np.array(user_weights), mu.values, cov.values)
+        if r_u <= y_max:
+            alloc_u = "<br>".join(f"{t}: {wi:.1%}" for t, wi in zip(tickers, user_weights))
+            fig.add_trace(go.Scatter(
+                x=[v_u], y=[r_u], mode="markers+text",
+                marker=dict(symbol="diamond", size=16, color=GOLD,
+                            line=dict(color="white", width=1.5)),
+                text=[user_label], textposition="top right",
+                textfont=dict(size=11, color=GOLD),
+                name=user_label,
+                hovertemplate=(f"<b>{user_label}</b><br>Vol: {v_u:.2%}<br>"
+                               f"Return: {r_u:.2%}<br><br>{alloc_u}<extra></extra>"),
+            ))
 
     fig.update_layout(
         template=CHART_TEMPLATE,
@@ -1000,6 +1016,31 @@ with st.sidebar:
     with st.expander("Available tickers by sector"):
         for sector, members in UNIVERSE.items():
             st.caption(f"{sector}:  {' · '.join(members)}")
+
+    st.divider()
+    st.markdown("**Portfolio Weighting**")
+    weight_mode = st.radio(
+        "wm", ["Equal Weight", "Custom"],
+        horizontal=True, label_visibility="collapsed", key="weight_mode",
+    )
+    custom_pcts: dict[str, float] = {}
+    if weight_mode == "Custom" and tickers:
+        n_t = len(tickers)
+        default_pct = round(100.0 / n_t, 1)
+        ca, cb = st.columns(2)
+        for idx, t in enumerate(tickers):
+            col = ca if idx % 2 == 0 else cb
+            custom_pcts[t] = col.number_input(
+                t, min_value=0.0, max_value=100.0,
+                value=default_pct, step=0.5, format="%.1f",
+                key=f"w_{t}",
+            )
+        total_pct = sum(custom_pcts.values())
+        if abs(total_pct - 100.0) > 1.0:
+            st.warning(f"Weights sum to {total_pct:.1f}% — auto-normalised to 100%")
+        else:
+            st.caption(f"Weights: {total_pct:.1f}%")
+
     col1, col2 = st.columns(2)
     start_dt = col1.date_input("Start", value=pd.Timestamp.today() - pd.Timedelta(days=120))
     end_dt   = col2.date_input("End",   value=pd.Timestamp.today())
@@ -1045,12 +1086,21 @@ confidence = st.session_state.get("var_conf",  0.95)
 mc_sims    = st.session_state.get("mc_paths", 300)
 
 # ── Derived objects used across tabs ──────────────────────────────────────────
-rets_df   = prices.pct_change().dropna()
-n_assets  = len(avail)
-ew_w      = w_equal(n_assets)
-port_r    = (rets_df * ew_w).sum(axis=1)          # equal-weight portfolio daily returns
-port_val  = (1 + port_r).cumprod()                 # portfolio value index (starts at 1)
-spy_r     = bench_prices["SPY"].pct_change().dropna() if "SPY" in bench_prices.columns else pd.Series(dtype=float)
+rets_df  = prices.pct_change().dropna()
+n_assets = len(avail)
+
+# ── Resolve user-defined portfolio weights ────────────────────────────────────
+if weight_mode == "Custom" and custom_pcts:
+    raw_w  = np.array([custom_pcts.get(t, 0.0) for t in avail])
+    user_w = raw_w / raw_w.sum() if raw_w.sum() > 0 else w_equal(n_assets)
+    port_label = "Custom Portfolio"
+else:
+    user_w     = w_equal(n_assets)
+    port_label = "Equal-Weight Portfolio"
+
+port_r   = (rets_df * user_w).sum(axis=1)
+port_val = (1 + port_r).cumprod()
+spy_r    = bench_prices["SPY"].pct_change().dropna() if "SPY" in bench_prices.columns else pd.Series(dtype=float)
 
 # ── Header ────────────────────────────────────────────────────────────────────
 st.title("Portfolio Management Dashboard")
@@ -1082,7 +1132,7 @@ with tab_overview:
 
     rows = list(port_metrics.keys())
     table_data = {"Metric": rows,
-                  "Your Portfolio (EW)": [port_metrics[k] for k in rows]}
+                  "Your Portfolio": [port_metrics[k] for k in rows]}
     if spy_metrics:
         table_data["S&P 500 (SPY)"] = [spy_metrics.get(k, "—") for k in rows]
 
@@ -1102,7 +1152,7 @@ with tab_overview:
     if bench_prices.empty:
         st.info("Benchmark data (SPY / AGG) not loaded — re-click Load Data to fetch.")
     else:
-        st.plotly_chart(chart_benchmark_comparison(port_r, bench_prices), use_container_width=True)
+        st.plotly_chart(chart_benchmark_comparison(port_r, bench_prices, label=port_label), use_container_width=True)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # TAB 2 · TECHNICAL ANALYSIS
@@ -1178,16 +1228,21 @@ with tab_port:
         # ── Efficient Frontier ────────────────────────────────────────────────
         st.subheader("Efficient Frontier")
         with st.spinner("Simulating portfolios…"):
-            st.plotly_chart(chart_ef(mu, cov, avail), use_container_width=True)
+            _uw = user_w if weight_mode == "Custom" else None
+            st.plotly_chart(chart_ef(mu, cov, avail, user_weights=_uw,
+                                     user_label=port_label), use_container_width=True)
 
         # ── Optimal portfolio weights table ───────────────────────────────────
         st.subheader("Optimal Portfolio Allocations")
-        wts_dict = {
+        wts_dict: dict[str, np.ndarray] = {}
+        if weight_mode == "Custom":
+            wts_dict["Your Portfolio"] = user_w
+        wts_dict.update({
             "Equal Weight":  w_equal(n_assets),
             "Min Variance":  w_min_var(mu, cov),
             "Mean-Variance": w_max_sharpe(mu, cov),   # tangency portfolio = Max Sharpe
             "Risk Parity":   w_inv_vol(rets_df),       # inverse-volatility weighting
-        }
+        })
         wts_df = pd.DataFrame(wts_dict, index=avail).map(lambda x: f"{x:.1%}")
         st.dataframe(wts_df, use_container_width=True)
 
@@ -1310,7 +1365,7 @@ with tab_risk:
         key="var_conf",
         help="Percentile used for all VaR / CVaR calculations in this tab",
     )
-    st.subheader("Portfolio Risk (Equal-Weight)")
+    st.subheader(f"Portfolio Risk — {port_label}")
 
     # ── Portfolio headline metrics ────────────────────────────────────────────
     c1, c2, c3, c4 = st.columns(4)
@@ -1319,11 +1374,11 @@ with tab_risk:
     with c3: mcard(f"CVaR / ES ({confidence:.0%})",  f"{cvar(port_r, confidence):.2%}",  False)
     with c4: mcard("Max Drawdown", f"{max_dd(port_val):.2%}", False)
 
-    st.plotly_chart(chart_dist(port_r, "Equal-Weight Portfolio"), use_container_width=True)
-    st.plotly_chart(chart_dd(port_val, "Equal-Weight Portfolio"), use_container_width=True)
+    st.plotly_chart(chart_dist(port_r, port_label), use_container_width=True)
+    st.plotly_chart(chart_dd(port_val, port_label), use_container_width=True)
 
     var_win = st.slider("Rolling VaR window (days)", 20, 63, 30, key="rv_win")
-    st.plotly_chart(chart_rolling_var(port_r, "Portfolio", var_win, confidence),
+    st.plotly_chart(chart_rolling_var(port_r, port_label, var_win, confidence),
                     use_container_width=True)
 
     st.divider()
@@ -1372,7 +1427,7 @@ with tab_mc:
     st.subheader("Portfolio Monte Carlo Simulation")
     port_log_r = np.log(port_val / port_val.shift(1)).dropna()
     paths_port = mc_paths(float(port_val.iloc[-1]), port_log_r, mc_sims, mc_days)
-    st.plotly_chart(chart_mc(paths_port, "Equal-Weight Portfolio", float(port_val.iloc[-1])),
+    st.plotly_chart(chart_mc(paths_port, port_label, float(port_val.iloc[-1])),
                     use_container_width=True)
 
     term_port = paths_port[-1]
@@ -1390,7 +1445,7 @@ with tab_mc:
     fig_th.add_vline(x=float(port_val.iloc[-1]),
                      line=dict(color="white", dash="dash"),
                      annotation_text="Current")
-    _layout(fig_th, f"Portfolio — Terminal Value Distribution ({mc_days}d)",
+    _layout(fig_th, f"{port_label} — Terminal Value Distribution ({mc_days}d)",
             xaxis_title="Portfolio Value", yaxis_title="Frequency", h=360)
     st.plotly_chart(fig_th, use_container_width=True)
 
