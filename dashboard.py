@@ -1653,9 +1653,6 @@ with tab_port:
         st.download_button("Download as CSV", _df_styles.to_csv(),
                            file_name="style_performance.csv", mime="text/csv")
 
-        st.subheader("Annual Returns by Strategy")
-        render_annual_returns(style_rets)
-
         st.divider()
 
         # ── Efficient Frontier ────────────────────────────────────────────────
@@ -1684,6 +1681,12 @@ with tab_port:
         render_table(wts_df)
         st.download_button("Download as CSV", wts_df.to_csv(),
                            file_name="portfolio_allocations.csv", mime="text/csv")
+
+        st.divider()
+
+        # ── Annual returns grid ───────────────────────────────────────────────
+        st.subheader("Annual Returns by Strategy")
+        render_annual_returns(style_rets)
 
         st.divider()
 
@@ -1741,19 +1744,11 @@ with tab_risk:
     with c3: mcard(f"CVaR / ES ({confidence:.0%})",  f"{cvar(port_r, confidence):.2%}",  False)
     with c4: mcard("Max Drawdown", f"{max_dd(port_val):.2%}", False)
 
-    # ── Risk contribution per stock ───────────────────────────────────────────
-    st.subheader("Risk Contribution per Stock")
-    st.caption("How much of total portfolio variance each position contributes, vs its weight.")
-    st.plotly_chart(chart_risk_contribution(user_w, rets_df.cov(), avail),
-                    use_container_width=True)
-
     st.plotly_chart(chart_dist(port_r, port_label), use_container_width=True)
     st.plotly_chart(chart_dd(port_val, port_label), use_container_width=True)
 
     var_win = st.slider("Rolling VaR window (days)", 20, 63, 30, key="rv_win")
     st.plotly_chart(chart_rolling_var(port_r, port_label, var_win, confidence),
-                    use_container_width=True)
-    st.plotly_chart(chart_rolling_sharpe(port_r, port_label),
                     use_container_width=True)
 
     st.divider()
@@ -1843,6 +1838,18 @@ with tab_risk:
     _layout(fig_th2, f"{mc_t} — Terminal Price Distribution ({mc_days}d)",
             xaxis_title="Price (USD)", yaxis_title="Frequency", h=360)
     st.plotly_chart(fig_th2, use_container_width=True)
+
+    st.divider()
+
+    # ── Risk contribution + Rolling Sharpe ───────────────────────────────────
+    st.subheader("Risk Contribution per Stock")
+    st.caption("How much of total portfolio variance each position contributes, vs its weight.")
+    st.plotly_chart(chart_risk_contribution(user_w, rets_df.cov(), avail),
+                    use_container_width=True)
+
+    st.subheader("Rolling Sharpe Ratio")
+    st.plotly_chart(chart_rolling_sharpe(port_r, port_label),
+                    use_container_width=True)
 
     st.divider()
     st.subheader("Methodology")
