@@ -1179,6 +1179,76 @@ with tab_port:
 
         st.divider()
 
+        # ── Strategy methodology ──────────────────────────────────────────────
+        st.subheader("Strategy Methodology")
+        st.markdown("""
+All optimisations are solved subject to **full investment** (weights sum to 1)
+and **long-only** constraints (no short selling). $N$ denotes the number of
+assets, $\\Sigma$ the covariance matrix of returns, and $\\mu$ the vector of
+mean returns.
+""")
+
+        st.markdown("#### 1. Equal Weight (1/N)")
+        st.markdown("*Invest an equal proportion in every asset.*")
+        st.latex(r"w_i = \frac{1}{N} \qquad \forall\; i = 1, \ldots, N")
+        st.markdown("""
+No estimation of expected returns or covariances is required. Research
+(DeMiguel et al., 2009) shows it is surprisingly hard to beat out-of-sample —
+it benefits from maximum diversification and has zero estimation error.
+""")
+
+        st.markdown("#### 2. Minimum Variance")
+        st.markdown("*Minimise portfolio volatility regardless of expected returns.*")
+        st.latex(r"""
+\min_{w} \;\; w^\top \Sigma\, w \qquad
+\text{subject to} \;\; \mathbf{1}^\top w = 1,\;\; w_i \ge 0
+""")
+        st.markdown("""
+The solution concentrates in low-volatility, low-correlation assets. It is the
+leftmost point on the efficient frontier and requires only the covariance matrix
+— no return forecasts needed.
+""")
+
+        st.markdown("#### 3. Mean-Variance (Tangency Portfolio)")
+        st.markdown("*Find the portfolio with the best return per unit of risk.*")
+        st.markdown(r"""
+The general Mean-Variance framework (Markowitz, 1952) maximises expected
+portfolio return for a given level of variance:
+""")
+        st.latex(r"""
+\max_{w} \;\; \mathbb{E}[R_p] - \frac{k}{2}\,\mathrm{var}(R_p)
+\qquad \text{subject to} \;\; \mathbf{1}^\top w = 1,\;\; w_i \ge 0
+""")
+        st.markdown(r"""
+Different values of the risk-aversion parameter $k$ trace out the entire
+efficient frontier. The **tangency portfolio** is the specific point where the
+Capital Market Line touches the frontier — equivalently, it **maximises the
+Sharpe ratio**:
+""")
+        st.latex(r"""
+\max_{w} \;\; \frac{w^\top \mu - r_f}{\sqrt{w^\top \Sigma\, w}}
+\qquad \text{subject to} \;\; \mathbf{1}^\top w = 1,\;\; w_i \ge 0
+""")
+        st.markdown(r"""
+$r_f = 5.25\%$ is the risk-free rate. This is the portfolio implemented here:
+**Mean-Variance optimisation solved as a Maximum Sharpe problem.**
+""")
+
+        st.markdown("#### 4. Risk Parity")
+        st.markdown("*Weight each asset inversely proportional to its volatility.*")
+        st.latex(r"""
+w_i = \frac{1/\sigma_i}{\displaystyle\sum_{j=1}^{N} 1/\sigma_j}
+""")
+        st.markdown(r"""
+$\sigma_i$ is the annualised volatility of asset $i$. Assets with high
+volatility receive smaller weights; low-volatility assets receive larger
+weights. The goal is for every asset to contribute **equal risk** to the
+portfolio rather than equal capital. This rule requires no matrix inversion and
+no return forecasts.
+""")
+
+        st.divider()
+
         # ── Portfolio styles backtest ─────────────────────────────────────────
         st.divider()
         st.subheader("Portfolio Styles — Backtested Performance")
