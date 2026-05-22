@@ -1140,9 +1140,8 @@ with tab_port:
             wts_dict = {"Your Portfolio": wts_dict["Your Portfolio"],
                         "Equal Weight":   w_equal(n_assets),
                         **{k: v for k, v in wts_dict.items() if k != "Your Portfolio"}}
-        wts_df = pd.DataFrame(wts_dict, index=avail) * 100   # store as 0–100 for numeric sort
-        col_cfg = {c: st.column_config.NumberColumn(format="%.1f%%") for c in wts_df.columns}
-        st.dataframe(wts_df, use_container_width=True, column_config=col_cfg)
+        wts_df = pd.DataFrame(wts_dict, index=avail).map(lambda x: f"{x:.1%}")
+        st.table(wts_df)
 
         st.divider()
 
