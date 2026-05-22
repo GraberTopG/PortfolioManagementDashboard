@@ -791,7 +791,7 @@ def chart_corr_heatmap(prices: pd.DataFrame) -> go.Figure:
 #  STREAMLIT APP
 # ══════════════════════════════════════════════════════════════════════════════
 
-st.set_page_config(page_title="S&P 500 US Equity Portfolio Dashboard", page_icon="📊",
+st.set_page_config(page_title="US Large Cap Long Only Portfolio Dashboard", page_icon="📊",
                    layout="wide", initial_sidebar_state="expanded")
 
 st.markdown("""
@@ -915,7 +915,7 @@ def mcard(label, value, pos=None):
 
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 with st.sidebar:
-    st.title("S&P 500 US Equity Portfolio Dashboard")
+    st.title("US Large Cap Long Only Portfolio Dashboard")
     st.caption("Programming with Advanced Computer Languages")
     st.divider()
     st.markdown("**Select Portfolio Tickers** (max 10)")
@@ -1007,7 +1007,7 @@ port_val = (1 + port_r).cumprod()
 spy_r    = bench_prices["SPY"].pct_change().dropna() if "SPY" in bench_prices.columns else pd.Series(dtype=float)
 
 # ── Header ────────────────────────────────────────────────────────────────────
-st.title("S&P 500 US Equity Portfolio Dashboard")
+st.title("US Large Cap Long Only Portfolio Dashboard")
 st.caption(f"Universe: {', '.join(avail)}  ·  "
            f"{prices.index[0].strftime('%d %b %Y')} to {prices.index[-1].strftime('%d %b %Y')}  ·  "
            f"{len(prices)} trading days")
