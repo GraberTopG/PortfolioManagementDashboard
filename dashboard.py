@@ -365,7 +365,7 @@ def efficient_frontier_mc(mu, cov, n=500):
     return np.array(vols), np.array(rets), np.array(srs), wts
 
 # ── Portfolio backtest with monthly rebalancing ───────────────────────────────
-def backtest_styles(prices: pd.DataFrame, min_lookback: int = 30) -> dict[str, pd.Series]:
+def backtest_styles(prices: pd.DataFrame, min_lookback: int = 5) -> dict[str, pd.Series]:
     rets = prices.pct_change().dropna()
     month_starts = rets.resample("MS").first().index.tolist()
     # append end of series
@@ -728,7 +728,7 @@ def chart_styles_cumret(style_rets: dict) -> go.Figure:
         fig.add_trace(go.Scatter(x=rebased.index, y=rebased, name=name,
                                  line=dict(color=colors_map.get(name, "#fff"), width=2),
                                  hovertemplate="%{y:.2f}%<extra>" + name + "</extra>"))
-    return _layout(fig, "Portfolio Styles — Cumulative Return (monthly rebalancing)",
+    return _layout(fig, "Portfolio Styles — Cumulative Return",
                    yaxis_title="Return (%)")
 
 
@@ -1173,7 +1173,6 @@ with tab_port:
 
         # ── Portfolio styles backtest ─────────────────────────────────────────
         st.subheader("Portfolio Styles — Backtested Performance")
-        st.caption("Monthly rebalancing · in-sample · Equal Weight used for periods with < 30 days of history")
 
         with st.spinner("Backtesting portfolio styles…"):
             style_rets = backtest_styles(prices)
