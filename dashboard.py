@@ -1082,7 +1082,7 @@ port_val = (1 + port_r).cumprod()
 spy_r    = bench_prices["SPY"].pct_change().dropna() if "SPY" in bench_prices.columns else pd.Series(dtype=float)
 
 # ── Header ────────────────────────────────────────────────────────────────────
-st.title("Portfolio Management Dashboard")
+st.title("Portfolio Dashboard")
 st.caption(f"Universe: {', '.join(avail)}  ·  "
            f"{prices.index[0].strftime('%d %b %Y')} → {prices.index[-1].strftime('%d %b %Y')}  ·  "
            f"{len(prices)} trading days")
