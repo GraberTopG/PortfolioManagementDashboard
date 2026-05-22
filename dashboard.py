@@ -1188,7 +1188,49 @@ with tab_overview:
             showarrow=False,
         )],
     )
-    st.plotly_chart(fig_pie, use_container_width=True)
+
+    # ── Sector allocation pie ─────────────────────────────────────────────────
+    _sec_w: dict[str, float] = {}
+    for t, w in zip(avail, user_w):
+        s = TICKER_SECTOR.get(t, "Other")
+        _sec_w[s] = _sec_w.get(s, 0.0) + w
+    _sec_sorted = sorted(_sec_w.items(), key=lambda x: -x[1])
+    _sec_labels = [s for s, _ in _sec_sorted]
+    _sec_values = [round(v * 100, 2) for _, v in _sec_sorted]
+
+    fig_sec_pie = go.Figure(go.Pie(
+        labels=_sec_labels,
+        values=_sec_values,
+        hole=0.38,
+        marker=dict(
+            colors=_pie_colors[:len(_sec_labels)],
+            line=dict(color=_BG, width=2),
+        ),
+        texttemplate="%{label}<br><b>%{percent}</b>",
+        textfont=dict(family=_FONT, size=12, color="#E0E4EA"),
+        hovertemplate="<b>%{label}</b><br>Weight: %{value:.1f}%<extra></extra>",
+        insidetextorientation="radial",
+    ))
+    fig_sec_pie.update_layout(
+        template=CHART_TEMPLATE,
+        paper_bgcolor=_BG,
+        plot_bgcolor=_PLOT,
+        font=dict(family=_FONT, color="#78909C"),
+        height=460,
+        showlegend=False,
+        margin=dict(t=30, b=20, l=20, r=20),
+        annotations=[dict(
+            text="GICS Sectors",
+            x=0.5, y=0.5, font=dict(size=13, color="#E0E4EA", family=_FONT),
+            showarrow=False,
+        )],
+    )
+
+    col_pie1, col_pie2 = st.columns(2)
+    with col_pie1:
+        st.plotly_chart(fig_pie, use_container_width=True)
+    with col_pie2:
+        st.plotly_chart(fig_sec_pie, use_container_width=True)
 
     # ── Concentration metrics ─────────────────────────────────────────────────
     _hhi = hhi(user_w)
