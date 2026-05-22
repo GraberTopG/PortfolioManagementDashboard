@@ -1,7 +1,7 @@
 """
 Quantitative Finance Dashboard
 ================================
-HSG Master – Programming Course Project
+HSG Master – Programming with Advanced Computer Languages
 
 Tabs:
   1. Overview        – portfolio metrics vs S&P 500, cumulative returns, benchmark comparison
@@ -11,19 +11,16 @@ Tabs:
   5. Risk Metrics    – portfolio VaR/CVaR/drawdown, then individual stock drill-down
   6. Monte Carlo     – portfolio GBM simulation, then single-stock simulation
 
-Data sources (tried in order):
-  1. Local CSV cache  — instant, works offline, survives restarts
-  2. Alpha Vantage    — free API key (25 req/day), used on first load or refresh
+Data: Yahoo Finance via yfinance — no API key required, full history from 2000.
 """
 
-import os, time
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 import plotly.express as px
 from plotly.subplots import make_subplots
 import streamlit as st
-import requests
+import yfinance as yf
 from scipy.stats import norm
 from scipy.optimize import minimize
 import warnings
@@ -82,8 +79,6 @@ UNIVERSE = {
     ],
 }
 ALL_TICKERS = [t for group in UNIVERSE.values() for t in group]
-AV_BASE        = "https://www.alphavantage.co/query"
-CACHE_DIR      = os.path.join(os.path.dirname(__file__), "data_cache")
 CHART_TEMPLATE = "plotly_dark"
 # Bloomberg Terminal colour palette
 ACCENT = "#FF8C00"   # Bloomberg orange  (primary highlight)
@@ -175,105 +170,42 @@ COMPANY_NAMES = {
     "AWK":"American Water Works",
 }
 
-os.makedirs(CACHE_DIR, exist_ok=True)
-
 # ══════════════════════════════════════════════════════════════════════════════
-#  DATA LAYER  —  CSV cache  →  Alpha Vantage fallback
+#  DATA LAYER  —  Yahoo Finance (yfinance), no API key required
 # ══════════════════════════════════════════════════════════════════════════════
 
-def _csv_path(ticker: str) -> str:
-    return os.path.join(CACHE_DIR, f"{ticker}.csv")
-
-
-def _load_csv(ticker: str) -> pd.DataFrame | None:
-    """Return cached DataFrame if the CSV exists, else None."""
-    path = _csv_path(ticker)
-    if not os.path.exists(path):
-        return None
-    df = pd.read_csv(path, index_col=0, parse_dates=True)
-    return df if not df.empty else None
-
-
-def _save_csv(ticker: str, df: pd.DataFrame) -> None:
-    df.to_csv(_csv_path(ticker))
-
-
-@st.cache_data(ttl=86400)
-def _av_daily(ticker: str, api_key: str) -> pd.DataFrame:
-    """Fetch compact daily OHLCV from Alpha Vantage and persist to CSV."""
-    r = requests.get(AV_BASE, params={
-        "function": "TIME_SERIES_DAILY", "symbol": ticker,
-        "outputsize": "compact", "apikey": api_key, "datatype": "json",
-    }, timeout=30)
-    r.raise_for_status()
-    data = r.json()
-    if "Time Series (Daily)" not in data:
-        raise ValueError(data.get("Information") or data.get("Note") or str(data))
-    df = pd.DataFrame(data["Time Series (Daily)"]).T
-    df.index = pd.to_datetime(df.index)
-    df = df.sort_index().rename(columns={
-        "1. open": "Open", "2. high": "High",
-        "3. low": "Low",  "4. close": "Close", "5. volume": "Volume",
-    })
-    for c in df.columns:
-        df[c] = pd.to_numeric(df[c])
-    _save_csv(ticker, df)   # persist immediately
-    return df
-
-
-def _get_ohlcv(ticker: str, api_key: str, bar=None, i: int = 0, n: int = 1) -> pd.DataFrame:
-    """Return OHLCV: CSV cache first, Alpha Vantage second."""
-    cached = _load_csv(ticker)
-    if cached is not None:
-        if bar:
-            bar.progress((i + 1) / n, text=f"Loaded {ticker} from cache ({i+1}/{n})")
-        return cached
-    # Not cached → fetch from API
-    if not api_key:
-        if bar:
-            bar.progress((i + 1) / n, text=f"Skipped {ticker} — no API key ({i+1}/{n})")
-        return pd.DataFrame()
+@st.cache_data(ttl=3600, show_spinner=False)
+def _yf_close(tickers_csv: str, start: str, end: str) -> pd.DataFrame:
+    """Batch-download adjusted close prices for multiple tickers in one call."""
+    tickers = [t.strip() for t in tickers_csv.split(",") if t.strip()]
     try:
-        df = _av_daily(ticker, api_key)
-        if bar:
-            bar.progress((i + 1) / n, text=f"Fetched {ticker} from API ({i+1}/{n})")
-        time.sleep(1.2)
-        return df
+        raw = yf.download(tickers, start=start, end=end,
+                          auto_adjust=True, progress=False)
     except Exception as e:
-        st.warning(f"Could not fetch {ticker}: {e}")
-        if bar:
-            bar.progress((i + 1) / n, text=f"Failed: {ticker} ({i+1}/{n})")
+        st.warning(f"Download failed: {e}")
         return pd.DataFrame()
+    if raw.empty:
+        return pd.DataFrame()
+    if isinstance(raw.columns, pd.MultiIndex):
+        return raw["Close"].dropna(how="all")
+    # Single-ticker download returns flat columns
+    return pd.DataFrame({tickers[0]: raw["Close"]}).dropna(how="all")
 
 
-def fetch_prices(tickers: list[str], api_key: str) -> pd.DataFrame:
-    bar = st.progress(0, text="Loading portfolio data…")
-    frames = {}
-    for i, t in enumerate(tickers):
-        df = _get_ohlcv(t, api_key, bar, i, len(tickers))
-        if not df.empty:
-            frames[t] = df["Close"]
-    bar.empty()
-    return pd.DataFrame(frames).dropna(how="all") if frames else pd.DataFrame()
-
-
-def fetch_benchmarks(api_key: str) -> pd.DataFrame:
-    bar = st.progress(0, text="Loading benchmark data…")
-    frames = {}
-    for i, t in enumerate(BENCHMARK_TICKERS):
-        df = _get_ohlcv(t, api_key, bar, i, len(BENCHMARK_TICKERS))
-        if not df.empty:
-            frames[t] = df["Close"]
-    bar.empty()
-    return pd.DataFrame(frames).dropna(how="all") if frames else pd.DataFrame()
-
-
-def fetch_single(ticker: str, api_key: str) -> pd.DataFrame:
-    df = _get_ohlcv(ticker, api_key)
-    if df.empty:
-        return df
-    cols = [c for c in ["Open","High","Low","Close","Volume"] if c in df.columns]
-    return df[cols].dropna()
+@st.cache_data(ttl=3600, show_spinner=False)
+def _yf_ohlcv(ticker: str, start: str, end: str) -> pd.DataFrame:
+    """Download full OHLCV for a single ticker (Technical Analysis tab)."""
+    try:
+        raw = yf.download(ticker, start=start, end=end,
+                          auto_adjust=True, progress=False)
+    except Exception:
+        return pd.DataFrame()
+    if raw.empty:
+        return pd.DataFrame()
+    if isinstance(raw.columns, pd.MultiIndex):
+        raw = raw.xs(ticker, axis=1, level=1)
+    cols = [c for c in ["Open", "High", "Low", "Close", "Volume"] if c in raw.columns]
+    return raw[cols].dropna()
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -983,11 +915,6 @@ with st.sidebar:
     st.title("Portfolio Dashboard")
     st.caption("Programming with Advanced Computer Languages")
     st.divider()
-    st.markdown("**Alpha Vantage API Key**")
-    st.markdown("[Get free key →](https://www.alphavantage.co/support/#api-key)")
-    api_key = st.text_input("API key", placeholder="e.g. ABCDE12345")
-    load_btn = st.button("Load Data", type="primary", use_container_width=True)
-    st.divider()
     st.markdown("**Select Portfolio Tickers** (max 10)")
     tickers = st.multiselect(
         "Choose up to 10 S&P 500 stocks",
@@ -1001,10 +928,15 @@ with st.sidebar:
 
     st.divider()
     st.markdown("**Period**")
-    period = st.selectbox(
-        "period_sel", ["All available", "Last 3 months", "Last 2 months", "Last month"],
-        label_visibility="collapsed", key="period",
-    )
+    col_s, col_e = st.columns(2)
+    start_dt = col_s.date_input("From",
+        value=pd.Timestamp.today() - pd.Timedelta(days=365 * 3),
+        min_value=pd.Timestamp("2000-01-01"),
+        max_value=pd.Timestamp.today())
+    end_dt = col_e.date_input("To",
+        value=pd.Timestamp.today(),
+        min_value=pd.Timestamp("2000-01-01"),
+        max_value=pd.Timestamp.today())
 
     st.divider()
     st.markdown("**Portfolio Weighting**")
@@ -1033,42 +965,22 @@ with st.sidebar:
 
     st.divider()
 
-# ── Auth guard ────────────────────────────────────────────────────────────────
-if not api_key:
-    st.info("### Enter your Alpha Vantage API key\n\n"
-            "1. Visit https://www.alphavantage.co/support/#api-key\n"
-            "2. Enter name & email — key appears instantly (free, no credit card)\n"
-            "3. Paste it into the sidebar and click **Load Data**")
+# ── Fetch all data in one batch (portfolio tickers + SPY + AGG) ───────────────
+_all = list(dict.fromkeys(tickers + BENCHMARK_TICKERS))   # dedup, preserve order
+with st.spinner("Loading market data…"):
+    _close = _yf_close(",".join(_all), str(start_dt), str(end_dt))
+
+if _close.empty:
+    st.error("No data returned. Check your internet connection or try a different date range.")
     st.stop()
 
-if not load_btn and "data_loaded" not in st.session_state:
-    st.info("API key entered — click **Load Data** to fetch market data.")
-    st.stop()
-
-# ── Fetch portfolio data ──────────────────────────────────────────────────────
-with st.spinner("Loading portfolio data…"):
-    prices_all = fetch_prices(tickers, api_key)
-
-avail = [t for t in tickers if t in prices_all.columns and prices_all[t].notna().sum() > 20]
+avail = [t for t in tickers if t in _close.columns and _close[t].notna().sum() > 10]
 if not avail:
-    st.error("No data returned. Check your API key and tickers.")
+    st.error("None of the selected tickers returned data for this period.")
     st.stop()
 
-_days = {"Last month": 21, "Last 2 months": 42, "Last 3 months": 63}
-prices = prices_all[avail].dropna(how="all")
-if period in _days:
-    prices = prices.iloc[-_days[period]:]
-
-# ── Fetch benchmark data (SPY + AGG) ─────────────────────────────────────────
-if "bench_prices" not in st.session_state or load_btn:
-    with st.spinner("Loading benchmark data (SPY, AGG)…"):
-        bench_prices = fetch_benchmarks(api_key)
-    st.session_state["bench_prices"] = bench_prices
-else:
-    bench_prices = st.session_state["bench_prices"]
-
-bench_prices = bench_prices.dropna(how="all") if not bench_prices.empty else bench_prices
-st.session_state["data_loaded"] = True
+prices       = _close[avail].dropna(how="all")
+bench_prices = _close[[t for t in BENCHMARK_TICKERS if t in _close.columns]].dropna(how="all")
 
 # Slider values are defined inside their tabs but read here first via session state
 confidence = st.session_state.get("var_conf",  0.95)
@@ -1150,7 +1062,7 @@ with tab_overview:
 with tab_tech:
     st.subheader("Technical Analysis")
     primary = st.selectbox("Select ticker", avail, key="ta_ticker")
-    ohlcv = fetch_single(primary, api_key)
+    ohlcv = _yf_ohlcv(primary, str(start_dt), str(end_dt))
 
     if ohlcv.empty:
         st.warning("No OHLCV data available.")
