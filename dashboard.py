@@ -631,21 +631,33 @@ def chart_ef(mu, cov, tickers) -> go.Figure:
     vols, rets, srs, wts = efficient_frontier_mc(mu, cov, n=600)
     hover = ["<br>".join(f"{t}: {w:.1%}" for t, w in zip(tickers, ws)) for ws in wts]
 
-    # Clip y-axis to the 98th percentile of random portfolios so outlier
-    # stocks don't blow up the scale (common with high-momentum tech names)
-    y_max = np.percentile(rets, 98) * 1.25
+    # Pre-compute optimal portfolios before y_max so their returns are included
+    w_mv = w_min_var(mu, cov)
+    r_mv, v_mv, _ = _port_stats(w_mv, mu.values, cov.values)
+    w_ms = w_max_sharpe(mu, cov)
+    r_ms, v_ms, _ = _port_stats(w_ms, mu.values, cov.values)
+
+    # y_max: 98th-pct of random scatter OR the Mean-Variance return (whichever
+    # is larger) — ensures the orange marker is never clipped off the chart
+    y_max = max(np.percentile(rets, 98) * 1.25, r_ms * 1.15)
     y_min = min(min(rets) * 1.1, 0)
 
     fig = go.Figure()
 
     # ── Scatter cloud (random portfolios) ────────────────────────────────────
-    # Flat muted colour so the cloud reads as "feasibility space" and the
-    # optimal portfolio markers (blue / orange) are the only coloured elements
+    # Sequential scale: dark navy (low Sharpe) → Bloomberg blue (high Sharpe).
+    # Gives the cloud depth and encodes information without competing with the
+    # orange Mean-Variance and blue Min-Variance marker circles.
     fig.add_trace(go.Scatter(
         x=vols, y=rets, mode="markers",
         marker=dict(
-            color="#37474F",   # blue-grey — visible on dark bg, not distracting
-            size=5, opacity=0.50,
+            color=srs,
+            colorscale=[[0.0, "#0D1B2A"], [0.5, "#1A3A5C"], [1.0, "#00A8E8"]],
+            reversescale=False,
+            size=5, opacity=0.65,
+            colorbar=dict(title="Sharpe", thickness=10, len=0.55,
+                          tickformat=".1f",
+                          tickfont=dict(color=_TICK, family=_MONO)),
         ),
         text=hover,
         hovertemplate="Vol: %{x:.2%}<br>Return: %{y:.2%}<br>%{text}"
@@ -654,8 +666,6 @@ def chart_ef(mu, cov, tickers) -> go.Figure:
     ))
 
     # ── Capital Market Line (subtle) ──────────────────────────────────────────
-    w_ms  = w_max_sharpe(mu, cov)
-    r_ms, v_ms, _ = _port_stats(w_ms, mu.values, cov.values)
     slope = (r_ms - RF) / v_ms
     cml_x = [0, max(vols) * 1.05]
     cml_y = [RF, RF + slope * cml_x[1]]
@@ -695,9 +705,6 @@ def chart_ef(mu, cov, tickers) -> go.Figure:
         ))
 
     # ── Optimal portfolios (solid circles + direct text labels) ──────────────
-    w_mv = w_min_var(mu, cov)
-    r_mv, v_mv, _ = _port_stats(w_mv, mu.values, cov.values)
-
     for label, r_opt, v_opt, w_opt, color in [
         ("Min Variance",  r_mv, v_mv, w_mv, BLUE),
         ("Mean-Variance", r_ms, v_ms, w_ms, ACCENT),
