@@ -1000,6 +1000,13 @@ with st.sidebar:
         tickers = DEFAULT_TICKERS
 
     st.divider()
+    st.markdown("**Period**")
+    period = st.selectbox(
+        "period_sel", ["All available", "Last 3 months", "Last 2 months", "Last month"],
+        label_visibility="collapsed", key="period",
+    )
+
+    st.divider()
     st.markdown("**Portfolio Weighting**")
     weight_mode = st.radio(
         "wm", ["Equal Weight", "Custom"],
@@ -1047,7 +1054,10 @@ if not avail:
     st.error("No data returned. Check your API key and tickers.")
     st.stop()
 
+_days = {"Last month": 21, "Last 2 months": 42, "Last 3 months": 63}
 prices = prices_all[avail].dropna(how="all")
+if period in _days:
+    prices = prices.iloc[-_days[period]:]
 
 # ── Fetch benchmark data (SPY + AGG) ─────────────────────────────────────────
 if "bench_prices" not in st.session_state or load_btn:
