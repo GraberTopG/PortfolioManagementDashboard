@@ -901,23 +901,40 @@ h2, h3 {
 /* ── Dividers ────────────────────────────────────────────────────────────── */
 hr { border-color: #1C2128 !important; opacity: 1 !important; }
 
-/* ── Dataframe column action menu — solid background so text is readable ─── */
-[data-baseweb="popover"],
-[data-baseweb="menu"] {
-    background-color: #111519 !important;
-    border: 1px solid #263238 !important;
-    box-shadow: 0 4px 16px rgba(0,0,0,0.6) !important;
-}
-[data-baseweb="menu"] ul,
-[data-baseweb="menu"] li,
-[data-baseweb="menu"] [role="option"] {
-    background-color: #111519 !important;
-    color: #E0E4EA !important;
-}
-[data-baseweb="menu"] [role="option"]:hover {
-    background-color: #1C2128 !important;
-}
 </style>""", unsafe_allow_html=True)
+
+
+def render_table(df: pd.DataFrame) -> None:
+    """Render a Bloomberg-styled HTML table — no interactive menus, no dropdowns."""
+    th_style = (
+        "background:#1C2128;color:#78909C;padding:8px 14px;"
+        "text-align:left;border-bottom:1px solid #263238;"
+        f"font-family:{_FONT};font-size:0.82rem;font-weight:600;letter-spacing:0.04em;"
+    )
+    idx_style = (
+        "background:#111519;color:#546E7A;padding:8px 14px;"
+        "border-bottom:1px solid #181D24;"
+        f"font-family:{_FONT};font-size:0.82rem;font-weight:500;"
+    )
+    td_style = (
+        "background:#111519;color:#E0E4EA;padding:8px 14px;"
+        "border-bottom:1px solid #181D24;"
+        f"font-family:{_FONT};font-size:0.82rem;"
+    )
+    header = "".join(f'<th style="{th_style}">{c}</th>' for c in df.columns)
+    rows   = "".join(
+        f'<tr><td style="{idx_style}">{idx}</td>'
+        + "".join(f'<td style="{td_style}">{v}</td>' for v in row)
+        + "</tr>"
+        for idx, row in df.iterrows()
+    )
+    st.markdown(
+        f'<table style="width:100%;border-collapse:collapse">'
+        f'<thead><tr><th style="{th_style}"></th>{header}</tr></thead>'
+        f'<tbody>{rows}</tbody></table>',
+        unsafe_allow_html=True,
+    )
+
 
 def mcard(label, value, pos=None):
     cls   = "mpos" if pos is True else ("mneg" if pos is False else "")
@@ -1059,7 +1076,7 @@ with tab_overview:
         table_data["S&P 500 (SPY)"] = [spy_metrics.get(k, "—") for k in rows]
 
     df_table = pd.DataFrame(table_data).set_index("Metric")
-    st.dataframe(df_table, use_container_width=True)
+    render_table(df_table)
 
     st.divider()
 
@@ -1157,9 +1174,8 @@ with tab_port:
             wts_dict = {"Your Portfolio": wts_dict["Your Portfolio"],
                         "Equal Weight":   w_equal(n_assets),
                         **{k: v for k, v in wts_dict.items() if k != "Your Portfolio"}}
-        wts_df = pd.DataFrame(wts_dict, index=avail) * 100
-        col_cfg = {c: st.column_config.NumberColumn(format="%.1f%%") for c in wts_df.columns}
-        st.dataframe(wts_df, use_container_width=True, column_config=col_cfg)
+        wts_df = pd.DataFrame(wts_dict, index=avail).map(lambda x: f"{x:.1%}")
+        render_table(wts_df)
 
         st.divider()
 
@@ -1199,7 +1215,7 @@ with tab_port:
                 "Alpha":          f"{a:.2%}",
                 f"VaR {confidence:.0%}": f"{hist_var(s_ret, confidence):.2%}",
             })
-        st.dataframe(pd.DataFrame(rows_s).set_index("Style"), use_container_width=True)
+        render_table(pd.DataFrame(rows_s).set_index("Style"))
 
 # ─────────────────────────────────────────────────────────────────────────────
 # TAB 5 · RISK METRICS
