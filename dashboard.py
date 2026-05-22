@@ -636,10 +636,10 @@ def chart_ef(mu, cov, tickers, user_weights=None, user_label="Your Portfolio") -
         alloc = "<br>".join(f"{t}: {wi:.1%}" for t, wi in zip(tickers, w_opt))
         fig.add_trace(go.Scatter(
             x=[v_opt], y=[r_opt], mode="markers+text",
-            marker=dict(symbol="circle", size=18, color=color,
-                        line=dict(color="white", width=2)),
+            marker=dict(symbol="circle", size=10, color=color,
+                        line=dict(color="white", width=1)),
             text=[label], textposition="top right",
-            textfont=dict(size=11, color=color),
+            textfont=dict(size=10, color=color),
             name=label,
             hovertemplate=(f"<b>{label}</b><br>Vol: {v_opt:.2%}<br>"
                            f"Return: {r_opt:.2%}<br><br>{alloc}<extra></extra>"),
@@ -652,10 +652,10 @@ def chart_ef(mu, cov, tickers, user_weights=None, user_label="Your Portfolio") -
             alloc_u = "<br>".join(f"{t}: {wi:.1%}" for t, wi in zip(tickers, user_weights))
             fig.add_trace(go.Scatter(
                 x=[v_u], y=[r_u], mode="markers+text",
-                marker=dict(symbol="diamond", size=16, color=GOLD,
-                            line=dict(color="white", width=1.5)),
+                marker=dict(symbol="circle", size=10, color=GOLD,
+                            line=dict(color="white", width=1)),
                 text=[user_label], textposition="top right",
-                textfont=dict(size=11, color=GOLD),
+                textfont=dict(size=10, color=GOLD),
                 name=user_label,
                 hovertemplate=(f"<b>{user_label}</b><br>Vol: {v_u:.2%}<br>"
                                f"Return: {r_u:.2%}<br><br>{alloc_u}<extra></extra>"),
