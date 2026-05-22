@@ -1130,13 +1130,19 @@ with tab_port:
         st.subheader("Optimal Portfolio Allocations")
         wts_dict: dict[str, np.ndarray] = {
             "Your Portfolio": user_w,
-            "Equal Weight":   w_equal(n_assets),
             "Min Variance":   w_min_var(mu, cov),
             "Mean-Variance":  w_max_sharpe(mu, cov),
             "Risk Parity":    w_inv_vol(rets_df),
         }
-        wts_df = pd.DataFrame(wts_dict, index=avail).map(lambda x: f"{x:.1%}")
-        st.dataframe(wts_df, use_container_width=True)
+        # Show Equal Weight as a separate column only when the user has chosen Custom weights
+        # (in Equal Weight mode, Your Portfolio is already equal weight — no duplicate needed)
+        if weight_mode == "Custom":
+            wts_dict = {"Your Portfolio": wts_dict["Your Portfolio"],
+                        "Equal Weight":   w_equal(n_assets),
+                        **{k: v for k, v in wts_dict.items() if k != "Your Portfolio"}}
+        wts_df = pd.DataFrame(wts_dict, index=avail) * 100   # store as 0–100 for numeric sort
+        col_cfg = {c: st.column_config.NumberColumn(format="%.1f%%") for c in wts_df.columns}
+        st.dataframe(wts_df, use_container_width=True, column_config=col_cfg)
 
         st.divider()
 
@@ -1147,8 +1153,11 @@ with tab_port:
 
         with st.spinner("Backtesting portfolio styles…"):
             style_rets = backtest_styles(prices)
-        # Prepend the user's custom/equal-weight portfolio so it appears first
+        # Prepend the user's portfolio so it appears first in the legend
         style_rets = {"Your Portfolio": (rets_df * user_w).sum(axis=1)} | style_rets
+        # In Equal Weight mode Your Portfolio == Equal Weight — drop the duplicate
+        if weight_mode != "Custom":
+            style_rets.pop("Equal Weight", None)
 
         st.plotly_chart(chart_styles_cumret(style_rets), use_container_width=True)
 
