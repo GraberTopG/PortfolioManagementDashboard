@@ -402,9 +402,9 @@ def mc_paths(last_val, daily_rets, n_sim=300, n_days=252):
 #  CHART HELPERS
 # ══════════════════════════════════════════════════════════════════════════════
 
-_FONT  = "IBM Plex Sans, Helvetica Neue, Arial, sans-serif"
-_MONO  = "IBM Plex Mono, Courier New, monospace"   # axes / numbers
-_SERIF = "IBM Plex Serif, Georgia, serif"           # titles
+_FONT  = "IBM Plex Serif, Georgia, serif"
+_MONO  = "IBM Plex Serif, Georgia, serif"
+_SERIF = "IBM Plex Serif, Georgia, serif"
 _BG    = "#0A0C10"   # paper / outer background (Bloomberg near-black)
 _PLOT  = "#0E1117"   # inner plot area
 _GRID  = "#181D24"   # gridlines (very subtle)
@@ -797,7 +797,7 @@ st.markdown("""
 @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Serif:wght@300;400;600;700&family=IBM+Plex+Sans:wght@300;400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
 
 html, body, [class*="css"], .stApp, .stMarkdown, p, span, label, li, td, th {
-    font-family: 'IBM Plex Sans', 'Helvetica Neue', Arial, sans-serif !important;
+    font-family: 'IBM Plex Serif', Georgia, serif !important;
 }
 
 /* ── Typography — headings use IBM Plex Serif for gravitas ──────────────── */
@@ -822,7 +822,7 @@ h2, h3 {
     margin-bottom: 8px;
 }
 .mlabel {
-    font-family: 'IBM Plex Mono', monospace !important;
+    font-family: 'IBM Plex Serif', Georgia, serif !important;
     font-size: 0.62rem;
     color: #546E7A;
     text-transform: uppercase;
@@ -830,7 +830,7 @@ h2, h3 {
     font-weight: 500;
 }
 .mvalue {
-    font-family: 'IBM Plex Mono', monospace !important;
+    font-family: 'IBM Plex Serif', Georgia, serif !important;
     font-size: 1.45rem;
     font-weight: 600;
     color: #E0E4EA;
@@ -848,7 +848,7 @@ h2, h3 {
 [data-testid="stSidebar"] .stButton > button {
     background-color: #FF8C00 !important;
     color: #0A0C10 !important;
-    font-family: 'IBM Plex Mono', monospace !important;
+    font-family: 'IBM Plex Serif', Georgia, serif !important;
     font-weight: 600 !important;
     letter-spacing: 0.06em !important;
     border: none !important;
@@ -865,7 +865,7 @@ h2, h3 {
     gap: 2px;
 }
 .stTabs [data-baseweb="tab"] {
-    font-family: 'IBM Plex Mono', monospace !important;
+    font-family: 'IBM Plex Serif', Georgia, serif !important;
     font-size: 0.72rem !important;
     font-weight: 500 !important;
     letter-spacing: 0.1em !important;
@@ -883,12 +883,12 @@ h2, h3 {
 .stDataFrame {
     border: 1px solid #1C2128 !important;
     border-radius: 2px !important;
-    font-family: 'IBM Plex Mono', monospace !important;
+    font-family: 'IBM Plex Serif', Georgia, serif !important;
 }
 
 /* ── Expanders ───────────────────────────────────────────────────────────── */
 .streamlit-expanderHeader {
-    font-family: 'IBM Plex Sans', sans-serif !important;
+    font-family: 'IBM Plex Serif', Georgia, serif !important;
     font-size: 0.82rem !important;
     font-weight: 500 !important;
     letter-spacing: 0.03em !important;
