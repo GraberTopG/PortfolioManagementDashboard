@@ -642,11 +642,14 @@ def chart_ef(mu, cov, tickers) -> go.Figure:
     fig.add_trace(go.Scatter(
         x=vols, y=rets, mode="markers",
         marker=dict(
-            color=srs, colorscale="Blues",
+            color=srs,
+            # Bloomberg scale: dark (low Sharpe) → blue → orange (high Sharpe)
+            colorscale=[[0.0, "#111519"], [0.5, "#00A8E8"], [1.0, "#FF8C00"]],
             reversescale=False,
             size=5, opacity=0.55,
             colorbar=dict(title="Sharpe", thickness=10, len=0.55,
-                          tickformat=".1f"),
+                          tickformat=".1f",
+                          tickfont=dict(color=_TICK, family=_MONO)),
         ),
         text=hover,
         hovertemplate="Vol: %{x:.2%}<br>Return: %{y:.2%}<br>%{text}"
@@ -823,7 +826,9 @@ def chart_mc(paths, label, last_val) -> go.Figure:
 
 def chart_corr_heatmap(prices: pd.DataFrame) -> go.Figure:
     corr = prices.pct_change().dropna().corr()
-    fig = px.imshow(corr, text_auto=".2f", color_continuous_scale="RdBu_r",
+    # Bloomberg diverging scale: red (negative) → near-black (zero) → blue (positive)
+    bbg_div = [[0.0, "#E53935"], [0.5, "#111519"], [1.0, "#00A8E8"]]
+    fig = px.imshow(corr, text_auto=".2f", color_continuous_scale=bbg_div,
                     zmin=-1, zmax=1, title="Pairwise Return Correlation")
     fig.update_layout(
         template=CHART_TEMPLATE,
@@ -1195,7 +1200,7 @@ the covariance matrix of returns, and $\\mu$ the vector of mean returns.
 
 ---
 #### 1. Equal Weight (1/N)
-> *Invest an equal proportion in every asset.*
+*Invest an equal proportion in every asset.*
 """)
             st.latex(r"w_i = \frac{1}{N} \qquad \forall\; i = 1, \ldots, N")
             st.markdown("""
@@ -1205,7 +1210,7 @@ it benefits from maximum diversification and has zero estimation error.
 
 ---
 #### 2. Minimum Variance
-> *Minimise portfolio volatility regardless of expected returns.*
+*Minimise portfolio volatility regardless of expected returns.*
 """)
             st.latex(r"""
 \min_{w} \;\; w^\top \Sigma\, w \qquad
@@ -1218,7 +1223,7 @@ matrix (no return forecasts needed).
 
 ---
 #### 3. Mean-Variance (Tangency Portfolio)
-> *Find the portfolio with the best return per unit of risk.*
+*Find the portfolio with the best return per unit of risk.*
 
 The general Mean-Variance framework (Markowitz, 1952) maximises expected
 portfolio return for a given level of variance:
@@ -1243,7 +1248,7 @@ $r_f = 5.25\%$ is the risk-free rate. This is the portfolio implemented here:
 
 ---
 #### 4. Risk Parity
-> *Weight each asset inversely proportional to its volatility.*
+*Weight each asset inversely proportional to its volatility.*
 
 Each asset $i$ receives a weight proportional to $1/\sigma_i$, normalised so
 weights sum to one:
