@@ -981,7 +981,7 @@ def mcard(label, value, pos=None):
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 with st.sidebar:
     st.title("Portfolio Dashboard")
-    st.caption("HSG Master · Programming Project")
+    st.caption("Programming with Advanced Computer Languages")
     st.divider()
     st.markdown("**Alpha Vantage API Key**")
     st.markdown("[Get free key →](https://www.alphavantage.co/support/#api-key)")
