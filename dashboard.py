@@ -1042,7 +1042,7 @@ with tab_overview:
         table_data["S&P 500 (SPY)"] = [spy_metrics.get(k, "—") for k in rows]
 
     df_table = pd.DataFrame(table_data).set_index("Metric")
-    st.dataframe(df_table, use_container_width=True)
+    st.table(df_table)
 
     st.divider()
 
@@ -1181,7 +1181,7 @@ with tab_port:
                 "Alpha":          f"{a:.2%}",
                 f"VaR {confidence:.0%}": f"{hist_var(s_ret, confidence):.2%}",
             })
-        st.dataframe(pd.DataFrame(rows_s).set_index("Style"), use_container_width=True)
+        st.table(pd.DataFrame(rows_s).set_index("Style"))
 
 # ─────────────────────────────────────────────────────────────────────────────
 # TAB 5 · RISK METRICS
