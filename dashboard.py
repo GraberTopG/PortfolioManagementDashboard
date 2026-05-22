@@ -1,0 +1,1035 @@
+"""
+Quantitative Finance Dashboard
+================================
+HSG Master – Programming Course Project
+
+Tabs:
+  1. Overview        – portfolio metrics vs S&P 500, cumulative returns, benchmark comparison
+  2. Technical       – candlestick, MAs, Bollinger, RSI, MACD  (ticker selector inside)
+  3. Correlation     – heatmap + rolling pairwise correlation
+  4. Portfolio       – efficient frontier, style comparison (EW / MinVar / MaxSharpe / RiskParity / InvVol)
+  5. Risk Metrics    – portfolio VaR/CVaR/drawdown, then individual stock drill-down
+  6. Monte Carlo     – portfolio GBM simulation, then single-stock simulation
+
+Data sources (tried in order):
+  1. Local CSV cache  — instant, works offline, survives restarts
+  2. Alpha Vantage    — free API key (25 req/day), used on first load or refresh
+"""
+
+import os, time
+import numpy as np
+import pandas as pd
+import plotly.graph_objects as go
+import plotly.express as px
+from plotly.subplots import make_subplots
+import streamlit as st
+import requests
+from scipy.stats import norm
+from scipy.optimize import minimize
+import warnings
+
+warnings.filterwarnings("ignore")
+
+# ── Constants ─────────────────────────────────────────────────────────────────
+AF = 252
+RF = 0.0525
+DEFAULT_TICKERS   = ["AAPL", "MSFT", "GOOGL", "AMZN", "META", "NVDA", "JPM", "GS"]
+BENCHMARK_TICKERS = ["SPY", "AGG"]
+
+UNIVERSE = {
+    "🖥️ Technology":  ["AAPL","MSFT","GOOGL","AMZN","META","NVDA","TSLA","NFLX",
+                        "AMD","ORCL","CRM","ADBE","INTC","QCOM"],
+    "🏦 Finance":      ["JPM","GS","BAC","MS","BLK","V","MA"],
+    "🏥 Healthcare":   ["JNJ","UNH","PFE","ABBV"],
+    "🛒 Consumer":     ["KO","MCD","NKE","WMT","TSCO"],
+    "⚡ Energy":       ["XOM","CVX"],
+    "📊 ETFs":         ["SPY","QQQ","IWM","AGG","TLT","GLD"],
+}
+ALL_TICKERS = [t for group in UNIVERSE.values() for t in group]
+AV_BASE        = "https://www.alphavantage.co/query"
+CACHE_DIR      = os.path.join(os.path.dirname(__file__), "data_cache")
+CHART_TEMPLATE = "plotly_dark"
+ACCENT, RED, BLUE, GOLD = "#00d4aa", "#ff4b4b", "#4b8bff", "#ffd700"
+
+COMPANY_NAMES = {
+    # Technology
+    "AAPL": "Apple",         "MSFT": "Microsoft",     "GOOGL": "Alphabet",
+    "AMZN": "Amazon",        "META": "Meta Platforms", "NVDA": "NVIDIA",
+    "TSLA": "Tesla",         "NFLX": "Netflix",        "AMD": "AMD",
+    "ORCL": "Oracle",        "CRM": "Salesforce",      "ADBE": "Adobe",
+    "INTC": "Intel",         "QCOM": "Qualcomm",
+    # Finance
+    "JPM": "JPMorgan Chase", "GS": "Goldman Sachs",    "BAC": "Bank of America",
+    "MS":  "Morgan Stanley", "BLK": "BlackRock",       "V": "Visa",
+    "MA":  "Mastercard",
+    # Healthcare
+    "JNJ": "Johnson & Johnson", "UNH": "UnitedHealth", "PFE": "Pfizer",
+    "ABBV": "AbbVie",
+    # Consumer
+    "KO":   "Coca-Cola",     "MCD": "McDonald's",      "NKE": "Nike",
+    "WMT":  "Walmart",       "TSCO": "Tractor Supply",
+    # Energy
+    "XOM": "ExxonMobil",     "CVX": "Chevron",
+    # ETFs
+    "SPY": "S&P 500 ETF",    "QQQ": "NASDAQ-100 ETF",  "IWM": "Russell 2000 ETF",
+    "AGG": "US Bond ETF",    "TLT": "20yr Treasury ETF","GLD": "Gold ETF",
+}
+
+os.makedirs(CACHE_DIR, exist_ok=True)
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  DATA LAYER  —  CSV cache  →  Alpha Vantage fallback
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _csv_path(ticker: str) -> str:
+    return os.path.join(CACHE_DIR, f"{ticker}.csv")
+
+
+def _load_csv(ticker: str) -> pd.DataFrame | None:
+    """Return cached DataFrame if the CSV exists, else None."""
+    path = _csv_path(ticker)
+    if not os.path.exists(path):
+        return None
+    df = pd.read_csv(path, index_col=0, parse_dates=True)
+    return df if not df.empty else None
+
+
+def _save_csv(ticker: str, df: pd.DataFrame) -> None:
+    df.to_csv(_csv_path(ticker))
+
+
+@st.cache_data(ttl=86400)
+def _av_daily(ticker: str, api_key: str) -> pd.DataFrame:
+    """Fetch compact daily OHLCV from Alpha Vantage and persist to CSV."""
+    r = requests.get(AV_BASE, params={
+        "function": "TIME_SERIES_DAILY", "symbol": ticker,
+        "outputsize": "compact", "apikey": api_key, "datatype": "json",
+    }, timeout=30)
+    r.raise_for_status()
+    data = r.json()
+    if "Time Series (Daily)" not in data:
+        raise ValueError(data.get("Information") or data.get("Note") or str(data))
+    df = pd.DataFrame(data["Time Series (Daily)"]).T
+    df.index = pd.to_datetime(df.index)
+    df = df.sort_index().rename(columns={
+        "1. open": "Open", "2. high": "High",
+        "3. low": "Low",  "4. close": "Close", "5. volume": "Volume",
+    })
+    for c in df.columns:
+        df[c] = pd.to_numeric(df[c])
+    _save_csv(ticker, df)   # persist immediately
+    return df
+
+
+def _get_ohlcv(ticker: str, api_key: str, bar=None, i: int = 0, n: int = 1) -> pd.DataFrame:
+    """Return OHLCV: CSV cache first, Alpha Vantage second."""
+    cached = _load_csv(ticker)
+    if cached is not None:
+        if bar:
+            bar.progress((i + 1) / n, text=f"Loaded {ticker} from cache ({i+1}/{n})")
+        return cached
+    # Not cached → fetch from API
+    if not api_key:
+        if bar:
+            bar.progress((i + 1) / n, text=f"Skipped {ticker} — no API key ({i+1}/{n})")
+        return pd.DataFrame()
+    try:
+        df = _av_daily(ticker, api_key)
+        if bar:
+            bar.progress((i + 1) / n, text=f"Fetched {ticker} from API ({i+1}/{n})")
+        time.sleep(1.2)
+        return df
+    except Exception as e:
+        st.warning(f"Could not fetch {ticker}: {e}")
+        if bar:
+            bar.progress((i + 1) / n, text=f"Failed: {ticker} ({i+1}/{n})")
+        return pd.DataFrame()
+
+
+def fetch_prices(tickers: list[str], api_key: str) -> pd.DataFrame:
+    bar = st.progress(0, text="Loading portfolio data…")
+    frames = {}
+    for i, t in enumerate(tickers):
+        df = _get_ohlcv(t, api_key, bar, i, len(tickers))
+        if not df.empty:
+            frames[t] = df["Close"]
+    bar.empty()
+    return pd.DataFrame(frames).dropna(how="all") if frames else pd.DataFrame()
+
+
+def fetch_benchmarks(api_key: str) -> pd.DataFrame:
+    bar = st.progress(0, text="Loading benchmark data…")
+    frames = {}
+    for i, t in enumerate(BENCHMARK_TICKERS):
+        df = _get_ohlcv(t, api_key, bar, i, len(BENCHMARK_TICKERS))
+        if not df.empty:
+            frames[t] = df["Close"]
+    bar.empty()
+    return pd.DataFrame(frames).dropna(how="all") if frames else pd.DataFrame()
+
+
+def fetch_single(ticker: str, api_key: str) -> pd.DataFrame:
+    df = _get_ohlcv(ticker, api_key)
+    if df.empty:
+        return df
+    cols = [c for c in ["Open","High","Low","Close","Volume"] if c in df.columns]
+    return df[cols].dropna()
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  ANALYTICS
+# ══════════════════════════════════════════════════════════════════════════════
+
+def log_returns(p: pd.Series) -> pd.Series:
+    return np.log(p / p.shift(1)).dropna()
+
+def simple_returns(p: pd.Series) -> pd.Series:
+    return p.pct_change().dropna()
+
+def ann_return(r: pd.Series) -> float:
+    return r.mean() * AF
+
+def ann_vol(r: pd.Series) -> float:
+    return r.std() * np.sqrt(AF)
+
+def sharpe(r: pd.Series, rf: float = RF) -> float:
+    v = ann_vol(r)
+    return (ann_return(r) - rf) / v if v else np.nan
+
+def sortino(r: pd.Series, rf: float = RF) -> float:
+    dd = r[r < 0].std() * np.sqrt(AF)
+    return (ann_return(r) - rf) / dd if dd else np.nan
+
+def max_dd(prices: pd.Series) -> float:
+    return ((prices - prices.cummax()) / prices.cummax()).min()
+
+def dd_series(prices: pd.Series) -> pd.Series:
+    return (prices - prices.cummax()) / prices.cummax()
+
+def calmar(r: pd.Series, prices: pd.Series) -> float:
+    mdd = abs(max_dd(prices))
+    return ann_return(r) / mdd if mdd else np.nan
+
+def hist_var(r: pd.Series, c: float = 0.95) -> float:
+    return -np.percentile(r.dropna(), (1 - c) * 100)
+
+def param_var(r: pd.Series, c: float = 0.95) -> float:
+    return -(r.mean() + norm.ppf(1 - c) * r.std())
+
+def cvar(r: pd.Series, c: float = 0.95) -> float:
+    v = hist_var(r, c)
+    tail = r[r < -v]
+    return -tail.mean() if len(tail) else v
+
+def beta_alpha(r: pd.Series, bench: pd.Series) -> tuple[float, float]:
+    aligned = pd.concat([r, bench], axis=1).dropna()
+    if len(aligned) < 10:
+        return np.nan, np.nan
+    cov = np.cov(aligned.iloc[:, 0], aligned.iloc[:, 1])
+    b = cov[0, 1] / cov[1, 1]
+    a = ann_return(aligned.iloc[:, 0]) - RF - b * (ann_return(aligned.iloc[:, 1]) - RF)
+    return b, a
+
+def win_rate(r: pd.Series) -> float:
+    return (r > 0).mean()
+
+def full_metrics(r: pd.Series, prices: pd.Series, bench_r: pd.Series,
+                 conf: float = 0.95) -> dict:
+    b, a = beta_alpha(r, bench_r)
+    return {
+        "Ann. Return":    f"{ann_return(r):.2%}",
+        "Ann. Volatility":f"{ann_vol(r):.2%}",
+        "Sharpe Ratio":   f"{sharpe(r):.2f}",
+        "Sortino Ratio":  f"{sortino(r):.2f}",
+        "Calmar Ratio":   f"{calmar(r, prices):.2f}",
+        "Max Drawdown":   f"{max_dd(prices):.2%}",
+        "Beta (vs SPY)":  f"{b:.2f}",
+        "Alpha (vs SPY)": f"{a:.2%}",
+        "Win Rate":       f"{win_rate(r):.1%}",
+        f"VaR {conf:.0%}":  f"{hist_var(r, conf):.2%}",
+        f"CVaR {conf:.0%}": f"{cvar(r, conf):.2%}",
+        "Skewness":       f"{r.skew():.2f}",
+        "Kurtosis":       f"{r.kurtosis():.2f}",
+    }
+
+def rolling_vol(r: pd.Series, w: int = 21) -> pd.Series:
+    return r.rolling(w, min_periods=5).std() * np.sqrt(AF)
+
+# ── Technical indicators ──────────────────────────────────────────────────────
+def bollinger(p, w=20, n=2):
+    m = p.rolling(w).mean()
+    s = p.rolling(w).std()
+    return m + n*s, m, m - n*s
+
+def rsi(p, w=14):
+    d = p.diff()
+    g = d.clip(lower=0).rolling(w).mean()
+    l = (-d.clip(upper=0)).rolling(w).mean()
+    return 100 - 100 / (1 + g / l)
+
+def macd(p, fast=12, slow=26, sig=9):
+    ml = p.ewm(span=fast, adjust=False).mean() - p.ewm(span=slow, adjust=False).mean()
+    sl = ml.ewm(span=sig, adjust=False).mean()
+    return ml, sl, ml - sl
+
+# ── Portfolio optimisation ────────────────────────────────────────────────────
+def _port_stats(w, mu, cov):
+    r = np.dot(w, mu) * AF
+    v = np.sqrt(w @ cov @ w) * np.sqrt(AF)
+    return r, v, (r - RF) / v if v else np.nan
+
+def _opt(objective, n, extra_constraints=None):
+    cons = [{"type": "eq", "fun": lambda w: w.sum() - 1}]
+    if extra_constraints:
+        cons += extra_constraints
+    res = minimize(objective, np.ones(n)/n, method="SLSQP",
+                   bounds=[(0, 1)]*n, constraints=cons)
+    return res.x
+
+def w_min_var(mu, cov):
+    return _opt(lambda w: _port_stats(w, mu, cov)[1], len(mu))
+
+def w_max_sharpe(mu, cov):
+    return _opt(lambda w: -_port_stats(w, mu, cov)[2], len(mu))
+
+def w_risk_parity(cov):
+    n = len(cov)
+    def obj(w):
+        sv = np.sqrt(w @ cov @ w)
+        rc = w * (cov @ w) / sv
+        return np.sum((rc - rc.mean())**2)
+    return _opt(obj, n, [{"type": "ineq", "fun": lambda w: w - 0.01}])
+
+def w_inv_vol(rets_df):
+    vols = rets_df.std()
+    iv = 1 / vols
+    return (iv / iv.sum()).values
+
+def w_equal(n):
+    return np.ones(n) / n
+
+def efficient_frontier_mc(mu, cov, n=500):
+    n_assets = len(mu)
+    vols, rets, srs, wts = [], [], [], []
+    for _ in range(n):
+        w = np.random.dirichlet(np.ones(n_assets))
+        r, v, s = _port_stats(w, mu, cov)
+        vols.append(v); rets.append(r); srs.append(s); wts.append(w)
+    return np.array(vols), np.array(rets), np.array(srs), wts
+
+# ── Portfolio backtest with monthly rebalancing ───────────────────────────────
+def backtest_styles(prices: pd.DataFrame, min_lookback: int = 30) -> dict[str, pd.Series]:
+    rets = prices.pct_change().dropna()
+    month_starts = rets.resample("MS").first().index.tolist()
+    # append end of series
+    rebal_dates = [d for d in month_starts if d in rets.index or d > rets.index[0]]
+
+    style_names = ["Equal Weight", "Min Variance", "Max Sharpe", "Risk Parity", "Inv. Volatility"]
+    port_rets = {s: pd.Series(dtype=float) for s in style_names}
+
+    for i, rebal in enumerate(rebal_dates):
+        # holding period: from this rebal to the next (or end)
+        hold_end = rebal_dates[i + 1] if i + 1 < len(rebal_dates) else rets.index[-1]
+        period = rets.loc[rebal:hold_end].iloc[1:]   # skip first row (same-day rebal)
+        if period.empty:
+            continue
+
+        hist = rets.loc[:rebal]
+        mu = hist.mean()
+        cov = hist.cov()
+        n = len(rets.columns)
+
+        if len(hist) >= min_lookback:
+            weights = {
+                "Equal Weight":  w_equal(n),
+                "Min Variance":  w_min_var(mu, cov),
+                "Max Sharpe":    w_max_sharpe(mu, cov),
+                "Risk Parity":   w_risk_parity(cov.values),
+                "Inv. Volatility": w_inv_vol(hist),
+            }
+        else:
+            ew = w_equal(n)
+            weights = {s: ew for s in style_names}
+
+        for s in style_names:
+            p_ret = (period * weights[s]).sum(axis=1)
+            port_rets[s] = pd.concat([port_rets[s], p_ret])
+
+    return port_rets
+
+# ── Monte Carlo ───────────────────────────────────────────────────────────────
+def mc_paths(last_val, daily_rets, n_sim=300, n_days=252):
+    mu, sigma = daily_rets.mean(), daily_rets.std()
+    paths = np.zeros((n_days, n_sim))
+    paths[0] = last_val
+    shocks = np.random.normal(mu, sigma, (n_days - 1, n_sim))
+    for t in range(1, n_days):
+        paths[t] = paths[t - 1] * np.exp(shocks[t - 1])
+    return paths
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  CHART HELPERS
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _layout(fig, title="", h=450, **kw):
+    fig.update_layout(template=CHART_TEMPLATE, title=title, height=h,
+                      hovermode="x unified",
+                      legend=dict(orientation="h", yanchor="bottom",
+                                  y=1.02, xanchor="right", x=1), **kw)
+    return fig
+
+
+def chart_cumret(series_dict: dict, title="Cumulative Returns (rebased to 0%)") -> go.Figure:
+    colors = [ACCENT, "#4b8bff", GOLD, "#ff8c00", "#c084fc", "#fb7185",
+              "#34d399", "#60a5fa", "#f87171", "#a3e635"]
+    fig = go.Figure()
+    for i, (name, p) in enumerate(series_dict.items()):
+        p = p.dropna()
+        rebased = (p / p.iloc[0] - 1) * 100
+        fig.add_trace(go.Scatter(x=rebased.index, y=rebased,
+                                 name=name, line=dict(color=colors[i % len(colors)], width=2),
+                                 hovertemplate="%{y:.2f}%<extra>" + name + "</extra>"))
+    return _layout(fig, title, yaxis_title="Return (%)")
+
+
+def chart_benchmark_comparison(port_r, bench_prices, label="Equal-Weight Portfolio") -> go.Figure:
+    """
+    Build a benchmark comparison chart.
+    Passes raw cumulative-product series to chart_cumret, which handles the
+    rebase-to-0% step.  (Previously the rebase was done here *and* again inside
+    chart_cumret, causing division by zero that flattened all lines.)
+    """
+    raw: dict[str, pd.Series] = {label: (1 + port_r).cumprod()}
+
+    if "SPY" in bench_prices.columns:
+        spy_r = bench_prices["SPY"].pct_change().dropna()
+        raw["S&P 500 (SPY)"] = (1 + spy_r).cumprod()
+
+    if "SPY" in bench_prices.columns and "AGG" in bench_prices.columns:
+        spy_r2 = bench_prices["SPY"].pct_change().dropna()
+        agg_r  = bench_prices["AGG"].pct_change().dropna()
+        bal_r  = (0.6 * spy_r2 + 0.4 * agg_r).dropna()
+        raw["60/40 (SPY+AGG)"] = (1 + bal_r).cumprod()
+
+    if "AGG" in bench_prices.columns:
+        agg_r2 = bench_prices["AGG"].pct_change().dropna()
+        raw["US Bonds (AGG)"] = (1 + agg_r2).cumprod()
+
+    # Align all series to a common start date (latest of first valid dates)
+    valid = {n: s.dropna() for n, s in raw.items() if not s.dropna().empty}
+    if not valid:
+        return go.Figure()
+    common_start = max(s.index[0] for s in valid.values())
+    aligned = {n: s[s.index >= common_start] for n, s in valid.items()}
+
+    # chart_cumret will rebase each series to 0% — pass raw cumulative products
+    return chart_cumret(aligned, "Portfolio vs Benchmarks (rebased to 0%)")
+
+
+def chart_price_ta(ohlcv: pd.DataFrame, ticker: str) -> go.Figure:
+    fig = make_subplots(rows=2, cols=1, shared_xaxes=True,
+                        row_heights=[0.75, 0.25], vertical_spacing=0.03)
+    fig.add_trace(go.Candlestick(
+        x=ohlcv.index, open=ohlcv["Open"], high=ohlcv["High"],
+        low=ohlcv["Low"], close=ohlcv["Close"], name="OHLC",
+        increasing_line_color=ACCENT, decreasing_line_color=RED,
+    ), row=1, col=1)
+    for period, color in [(20, GOLD), (50, "#ff8c00")]:
+        ma = ohlcv["Close"].rolling(period).mean()
+        fig.add_trace(go.Scatter(x=ohlcv.index, y=ma, name=f"MA{period}",
+                                 line=dict(color=color, width=1.2)), row=1, col=1)
+    upper, mid, lower = bollinger(ohlcv["Close"])
+    for band, name in [(upper, "BB Upper"), (lower, "BB Lower")]:
+        fig.add_trace(go.Scatter(x=ohlcv.index, y=band, name=name,
+                                 line=dict(color="rgba(150,150,255,0.5)", dash="dot", width=1),
+                                 showlegend=True), row=1, col=1)
+    fig.add_trace(go.Bar(x=ohlcv.index, y=ohlcv["Volume"], name="Volume",
+                         marker_color="rgba(100,149,237,0.4)"), row=2, col=1)
+    fig.update_layout(template=CHART_TEMPLATE, title=f"{ticker} – Price & Volume",
+                      xaxis_rangeslider_visible=False, height=600,
+                      legend=dict(orientation="h"))
+    return fig
+
+
+def chart_rsi_macd(prices: pd.Series, ticker: str) -> go.Figure:
+    r = rsi(prices)
+    ml, sl, hist = macd(prices)
+    fig = make_subplots(rows=2, cols=1, shared_xaxes=True,
+                        subplot_titles=["RSI (14)", "MACD (12/26/9)"],
+                        vertical_spacing=0.12)
+    fig.add_trace(go.Scatter(x=prices.index, y=r, name="RSI",
+                             line=dict(color=ACCENT, width=1.5)), row=1, col=1)
+    fig.add_hrect(y0=70, y1=100, fillcolor=RED, opacity=0.08, row=1, col=1)
+    fig.add_hrect(y0=0,  y1=30,  fillcolor=BLUE, opacity=0.08, row=1, col=1)
+    for level, color in [(70, RED), (30, BLUE)]:
+        fig.add_hline(y=level, line=dict(color=color, dash="dash", width=1), row=1, col=1)
+    fig.add_trace(go.Scatter(x=prices.index, y=ml, name="MACD",
+                             line=dict(color=ACCENT, width=1.5)), row=2, col=1)
+    fig.add_trace(go.Scatter(x=prices.index, y=sl, name="Signal",
+                             line=dict(color=GOLD, width=1.5)), row=2, col=1)
+    fig.add_trace(go.Bar(x=prices.index, y=hist, name="Histogram",
+                         marker_color=[ACCENT if v >= 0 else RED for v in hist],
+                         opacity=0.6), row=2, col=1)
+    fig.update_layout(template=CHART_TEMPLATE, height=500,
+                      legend=dict(orientation="h"))
+    return fig
+
+
+def chart_ef(mu, cov, tickers) -> go.Figure:
+    vols, rets, srs, wts = efficient_frontier_mc(mu, cov, n=600)
+    hover = ["<br>".join(f"{t}: {w:.1%}" for t, w in zip(tickers, ws)) for ws in wts]
+
+    fig = go.Figure()
+    # Scatter cloud
+    fig.add_trace(go.Scatter(
+        x=vols, y=rets, mode="markers",
+        marker=dict(color=srs, colorscale="Viridis", size=5, opacity=0.7,
+                    colorbar=dict(title="Sharpe Ratio", thickness=12)),
+        text=hover, hovertemplate="Vol: %{x:.2%}<br>Return: %{y:.2%}<br>%{text}<extra>Random Portfolio</extra>",
+        name="Random Portfolios",
+    ))
+
+    # Individual stocks
+    for t in tickers:
+        idx = list(tickers).index(t)
+        sv = np.sqrt(cov.iloc[idx, idx]) * np.sqrt(AF)
+        sr_val = mu.iloc[idx] * AF
+        fig.add_trace(go.Scatter(
+            x=[sv], y=[sr_val], mode="markers+text",
+            marker=dict(symbol="diamond", size=10, color="white", opacity=0.7),
+            text=[t], textposition="top center",
+            textfont=dict(size=9, color="white"),
+            name=t, showlegend=False,
+            hovertemplate=f"{t}<br>Vol: {sv:.2%}<br>Return: {sr_val:.2%}<extra></extra>",
+        ))
+
+    # Optimal portfolios + Capital Market Line
+    opt_points = {
+        "⭐ Min Variance":  (w_min_var(mu, cov),  BLUE),
+        "⭐ Max Sharpe":    (w_max_sharpe(mu, cov), ACCENT),
+    }
+    for label, (w, color) in opt_points.items():
+        r_opt, v_opt, _ = _port_stats(w, mu.values, cov.values)
+        alloc = "<br>".join(f"{t}: {wi:.1%}" for t, wi in zip(tickers, w))
+        fig.add_trace(go.Scatter(
+            x=[v_opt], y=[r_opt], mode="markers",
+            marker=dict(symbol="star", size=20, color=color,
+                        line=dict(color="white", width=1)),
+            name=label,
+            hovertemplate=f"{label}<br>Vol: {v_opt:.2%}<br>Return: {r_opt:.2%}<br>{alloc}<extra></extra>",
+        ))
+
+    # Capital Market Line through Max Sharpe
+    w_ms = w_max_sharpe(mu, cov)
+    r_ms, v_ms, _ = _port_stats(w_ms, mu.values, cov.values)
+    slope = (r_ms - RF) / v_ms
+    cml_x = [0, max(vols) * 1.1]
+    cml_y = [RF, RF + slope * cml_x[1]]
+    fig.add_trace(go.Scatter(x=cml_x, y=cml_y, mode="lines",
+                             line=dict(color=ACCENT, dash="dash", width=1.2),
+                             name="Capital Market Line",
+                             hoverinfo="skip"))
+
+    # Risk-free rate marker
+    fig.add_trace(go.Scatter(x=[0], y=[RF], mode="markers+text",
+                             marker=dict(symbol="circle", size=10, color=GOLD),
+                             text=["Rf"], textposition="top right",
+                             textfont=dict(color=GOLD),
+                             name="Risk-Free Rate", showlegend=False,
+                             hovertemplate=f"Risk-Free Rate: {RF:.2%}<extra></extra>"))
+
+    fig.update_layout(
+        template=CHART_TEMPLATE, height=560,
+        title="Efficient Frontier · Monte Carlo Simulation",
+        xaxis=dict(title="Annualised Volatility", tickformat=".0%"),
+        yaxis=dict(title="Annualised Return", tickformat=".0%"),
+        annotations=[dict(
+            x=0.01, y=0.99, xref="paper", yref="paper", showarrow=False,
+            text=("Each dot = one random portfolio<br>"
+                  "⭐ = analytically optimal portfolios<br>"
+                  "◆ = individual stocks"),
+            align="left", font=dict(size=10, color="#aaa"),
+            bgcolor="rgba(0,0,0,0.4)", borderpad=6,
+        )],
+    )
+    return fig
+
+
+def chart_styles_cumret(style_rets: dict) -> go.Figure:
+    series = {s: (1 + r).cumprod() for s, r in style_rets.items() if not r.empty}
+    colors_map = {
+        "Equal Weight": ACCENT, "Min Variance": BLUE,
+        "Max Sharpe": GOLD, "Risk Parity": "#ff8c00", "Inv. Volatility": "#c084fc",
+    }
+    fig = go.Figure()
+    for name, p in series.items():
+        p = p.dropna()
+        rebased = (p / p.iloc[0] - 1) * 100
+        fig.add_trace(go.Scatter(x=rebased.index, y=rebased, name=name,
+                                 line=dict(color=colors_map.get(name, "#fff"), width=2),
+                                 hovertemplate="%{y:.2f}%<extra>" + name + "</extra>"))
+    return _layout(fig, "Portfolio Styles — Cumulative Return (monthly rebalancing)",
+                   yaxis_title="Return (%)")
+
+
+def chart_dist(r: pd.Series, label: str) -> go.Figure:
+    mu, sigma = r.mean(), r.std()
+    x = np.linspace(r.min(), r.max(), 200)
+    fig = go.Figure()
+    fig.add_trace(go.Histogram(x=r, nbinsx=60, histnorm="probability density",
+                               marker_color=ACCENT, opacity=0.7, name="Actual"))
+    fig.add_trace(go.Scatter(x=x, y=norm.pdf(x, mu, sigma), name="Normal fit",
+                             line=dict(color=RED, width=2)))
+    v = hist_var(r)
+    fig.add_vline(x=-v, line=dict(color=GOLD, dash="dash"),
+                  annotation_text="VaR 95%", annotation_position="top right")
+    return _layout(fig, f"{label} — Return Distribution",
+                   xaxis_title="Daily Return", yaxis_title="Density", h=400)
+
+
+def chart_dd(prices: pd.Series, label: str) -> go.Figure:
+    dd = dd_series(prices) * 100
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=dd.index, y=dd, fill="tozeroy", name="Drawdown",
+                             line=dict(color=RED, width=1.2),
+                             fillcolor="rgba(255,75,75,0.18)"))
+    return _layout(fig, f"{label} — Drawdown (%)", yaxis_title="Drawdown (%)", h=340)
+
+
+def chart_rolling_var(r: pd.Series, label: str, w: int, c: float) -> go.Figure:
+    rv = r.rolling(w).apply(lambda x: hist_var(pd.Series(x), c), raw=False) * 100
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=rv.index, y=rv, fill="tozeroy",
+                             line=dict(color=RED, width=1.5),
+                             fillcolor="rgba(255,75,75,0.15)",
+                             name=f"Rolling {c:.0%} VaR"))
+    return _layout(fig, f"{label} — Rolling {w}d Historical VaR ({c:.0%})",
+                   yaxis_title="VaR (%)", h=360)
+
+
+def chart_mc(paths, label, last_val) -> go.Figure:
+    n_days = paths.shape[0]
+    x = list(range(n_days))
+    fig = go.Figure()
+    for i in range(min(80, paths.shape[1])):
+        fig.add_trace(go.Scatter(x=x, y=paths[:, i], mode="lines",
+                                 line=dict(width=0.4, color="rgba(100,200,255,0.12)"),
+                                 showlegend=False))
+    for pct, name, color in [(90, "90th pct (bull)", ACCENT),
+                              (50, "Median",           GOLD),
+                              (10, "10th pct (bear)",  RED)]:
+        fig.add_trace(go.Scatter(x=x, y=np.percentile(paths, pct, axis=1),
+                                 name=name, line=dict(color=color, width=2)))
+    fig.add_hline(y=last_val, line=dict(color="white", dash="dash", width=1),
+                  annotation_text="Current value")
+    return _layout(fig, f"{label} — Monte Carlo ({n_days}d forecast)",
+                   xaxis_title="Trading Days", yaxis_title="Value", h=480)
+
+
+def chart_corr_heatmap(prices: pd.DataFrame) -> go.Figure:
+    corr = prices.pct_change().dropna().corr()
+    fig = px.imshow(corr, text_auto=".2f", color_continuous_scale="RdBu_r",
+                    zmin=-1, zmax=1, title="Pairwise Return Correlation")
+    fig.update_layout(template=CHART_TEMPLATE, height=460)
+    return fig
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  STREAMLIT APP
+# ══════════════════════════════════════════════════════════════════════════════
+
+st.set_page_config(page_title="Quant Finance Dashboard", page_icon="📈",
+                   layout="wide", initial_sidebar_state="expanded")
+
+st.markdown("""
+<style>
+  .mcard {
+    background:#1e1e2e; border-radius:10px; padding:16px 20px;
+    border-left:4px solid #00d4aa; margin-bottom:8px;
+  }
+  .mlabel { font-size:.75rem; color:#888; text-transform:uppercase; letter-spacing:.08em; }
+  .mvalue { font-size:1.4rem; font-weight:700; color:#f0f0f0; margin-top:4px; }
+  .mpos   { color:#00d4aa !important; }
+  .mneg   { color:#ff4b4b !important; }
+</style>""", unsafe_allow_html=True)
+
+def mcard(label, value, pos=None):
+    cls = "mpos" if pos is True else ("mneg" if pos is False else "")
+    st.markdown(f'<div class="mcard"><div class="mlabel">{label}</div>'
+                f'<div class="mvalue {cls}">{value}</div></div>', unsafe_allow_html=True)
+
+# ── Sidebar ───────────────────────────────────────────────────────────────────
+with st.sidebar:
+    st.title("📈 Quant Dashboard")
+    st.caption("HSG Master · Programming Project")
+    st.divider()
+    st.markdown("**Alpha Vantage API Key**")
+    st.markdown("[Get free key →](https://www.alphavantage.co/support/#api-key)")
+    api_key = st.text_input("API key", placeholder="e.g. ABCDE12345")
+    load_btn = st.button("⬇ Load Data", type="primary", use_container_width=True)
+    st.divider()
+    st.markdown("**Select Portfolio Tickers** (max 10)")
+    tickers = st.multiselect(
+        "Choose up to 10 stocks / ETFs",
+        options=ALL_TICKERS,
+        default=DEFAULT_TICKERS,
+        format_func=lambda t: f"{t} ({COMPANY_NAMES.get(t, '')})",
+    )
+    if len(tickers) > 10:
+        st.warning("⚠️ Maximum 10 tickers — only the first 10 will be used.")
+        tickers = tickers[:10]
+    if not tickers:
+        tickers = DEFAULT_TICKERS
+
+    # Group labels as helper
+    with st.expander("📋 Available tickers by sector"):
+        for sector, members in UNIVERSE.items():
+            st.caption(f"{sector}:  {' · '.join(members)}")
+    col1, col2 = st.columns(2)
+    start_dt = col1.date_input("Start", value=pd.Timestamp.today() - pd.Timedelta(days=120))
+    end_dt   = col2.date_input("End",   value=pd.Timestamp.today())
+    st.divider()
+    st.caption("Data: Alpha Vantage · Built on gs_quant concepts")
+
+# ── Auth guard ────────────────────────────────────────────────────────────────
+if not api_key:
+    st.info("### Enter your Alpha Vantage API key\n\n"
+            "1. Visit https://www.alphavantage.co/support/#api-key\n"
+            "2. Enter name & email — key appears instantly (free, no credit card)\n"
+            "3. Paste it into the sidebar and click **Load Data**")
+    st.stop()
+
+if not load_btn and "data_loaded" not in st.session_state:
+    st.info("API key entered — click **⬇ Load Data** to fetch market data.")
+    st.stop()
+
+# ── Fetch portfolio data ──────────────────────────────────────────────────────
+with st.spinner("Loading portfolio data…"):
+    prices_all = fetch_prices(tickers, api_key)
+
+avail = [t for t in tickers if t in prices_all.columns and prices_all[t].notna().sum() > 20]
+if not avail:
+    st.error("No data returned. Check your API key and tickers.")
+    st.stop()
+
+prices = prices_all[avail].loc[str(start_dt):str(end_dt)]
+
+# ── Fetch benchmark data (SPY + AGG) ─────────────────────────────────────────
+if "bench_prices" not in st.session_state or load_btn:
+    with st.spinner("Loading benchmark data (SPY, AGG)…"):
+        bench_prices = fetch_benchmarks(api_key)
+    st.session_state["bench_prices"] = bench_prices
+else:
+    bench_prices = st.session_state["bench_prices"]
+
+bench_prices = bench_prices.loc[str(start_dt):str(end_dt)] if not bench_prices.empty else bench_prices
+st.session_state["data_loaded"] = True
+
+# Slider values are defined inside their tabs but read here first via session state
+confidence = st.session_state.get("var_conf",  0.95)
+mc_sims    = st.session_state.get("mc_paths", 300)
+
+# ── Derived objects used across tabs ──────────────────────────────────────────
+rets_df   = prices.pct_change().dropna()
+n_assets  = len(avail)
+ew_w      = w_equal(n_assets)
+port_r    = (rets_df * ew_w).sum(axis=1)          # equal-weight portfolio daily returns
+port_val  = (1 + port_r).cumprod()                 # portfolio value index (starts at 1)
+spy_r     = bench_prices["SPY"].pct_change().dropna() if "SPY" in bench_prices.columns else pd.Series(dtype=float)
+
+# ── Header ────────────────────────────────────────────────────────────────────
+st.title("Quantitative Finance Dashboard")
+st.caption(f"Universe: {', '.join(avail)}  ·  Period: {start_dt} → {end_dt}  ·  "
+           f"{len(prices)} trading days")
+st.divider()
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  TAB LAYOUT
+# ══════════════════════════════════════════════════════════════════════════════
+tab_overview, tab_tech, tab_corr, tab_port, tab_risk, tab_mc = st.tabs([
+    "🏠 Overview",
+    "📊 Technical Analysis",
+    "🔗 Correlation",
+    "💼 Portfolio Optimisation",
+    "⚠️ Risk Metrics",
+    "🎲 Monte Carlo",
+])
+
+# ─────────────────────────────────────────────────────────────────────────────
+# TAB 1 · OVERVIEW
+# ─────────────────────────────────────────────────────────────────────────────
+with tab_overview:
+    st.subheader("Portfolio Performance vs S&P 500")
+
+    # ── Metrics table ────────────────────────────────────────────────────────
+    port_metrics = full_metrics(port_r, port_val, spy_r, confidence)
+    spy_metrics  = full_metrics(spy_r, (1+spy_r).cumprod(), spy_r, confidence) if not spy_r.empty else {}
+
+    rows = list(port_metrics.keys())
+    table_data = {"Metric": rows,
+                  "Your Portfolio (EW)": [port_metrics[k] for k in rows]}
+    if spy_metrics:
+        table_data["S&P 500 (SPY)"] = [spy_metrics.get(k, "—") for k in rows]
+
+    df_table = pd.DataFrame(table_data).set_index("Metric")
+    st.dataframe(df_table, use_container_width=True)
+
+    st.divider()
+
+    # ── Cumulative return of portfolio ────────────────────────────────────────
+    st.subheader("Individual Stock Cumulative Returns")
+    st.plotly_chart(chart_cumret({t: prices[t] for t in avail}), use_container_width=True)
+
+    st.divider()
+
+    # ── Benchmark comparison ──────────────────────────────────────────────────
+    st.subheader("Portfolio vs Benchmarks")
+    if bench_prices.empty:
+        st.info("Benchmark data (SPY / AGG) not loaded — re-click Load Data to fetch.")
+    else:
+        st.plotly_chart(chart_benchmark_comparison(port_r, bench_prices), use_container_width=True)
+
+# ─────────────────────────────────────────────────────────────────────────────
+# TAB 2 · TECHNICAL ANALYSIS
+# ─────────────────────────────────────────────────────────────────────────────
+with tab_tech:
+    st.subheader("Technical Analysis")
+    primary = st.selectbox("Select ticker", avail, key="ta_ticker")
+    ohlcv = fetch_single(primary, api_key)
+    ohlcv = ohlcv.loc[str(start_dt):str(end_dt)] if not ohlcv.empty else ohlcv
+
+    if ohlcv.empty:
+        st.warning("No OHLCV data available.")
+    else:
+        st.plotly_chart(chart_price_ta(ohlcv, primary), use_container_width=True)
+        st.plotly_chart(chart_rsi_macd(ohlcv["Close"], primary), use_container_width=True)
+        with st.expander("📖 Indicator guide"):
+            st.markdown("""
+| Indicator | Signal |
+|-----------|--------|
+| **MA 20 / 50** | Price above both MAs → uptrend; below both → downtrend |
+| **Bollinger Bands** | Price near upper band → potentially overbought; near lower → oversold |
+| **RSI > 70** | Overbought — possible pullback |
+| **RSI < 30** | Oversold — possible bounce |
+| **MACD crossover ↑** | Bullish momentum signal |
+| **MACD crossover ↓** | Bearish momentum signal |
+""")
+
+# ─────────────────────────────────────────────────────────────────────────────
+# TAB 3 · CORRELATION
+# ─────────────────────────────────────────────────────────────────────────────
+with tab_corr:
+    st.subheader("Correlation Analysis")
+    st.plotly_chart(chart_corr_heatmap(prices), use_container_width=True)
+
+    st.subheader("Rolling Pairwise Correlation")
+    c1, c2, c3 = st.columns(3)
+    t1 = c1.selectbox("Asset A", avail, index=0, key="ca")
+    t2 = c2.selectbox("Asset B", avail, index=min(1, len(avail)-1), key="cb")
+    rw = c3.slider("Window (days)", 10, 63, 21, key="cw")
+
+    if t1 != t2:
+        rc = rets_df[t1].rolling(rw).corr(rets_df[t2])
+        fig_rc = go.Figure()
+        fig_rc.add_trace(go.Scatter(x=rc.index, y=rc, fill="tozeroy",
+                                    line=dict(color=ACCENT, width=1.5),
+                                    fillcolor="rgba(0,212,170,0.1)",
+                                    name=f"ρ({t1},{t2})"))
+        fig_rc.add_hline(y=0, line=dict(color="white", dash="dash", width=1))
+        _layout(fig_rc, f"Rolling {rw}d Correlation: {t1} vs {t2}",
+                yaxis=dict(range=[-1, 1]))
+        st.plotly_chart(fig_rc, use_container_width=True)
+
+        with st.expander("Return scatter"):
+            combined = pd.concat([rets_df[t1], rets_df[t2]], axis=1).dropna()
+            fig_sc = px.scatter(combined, x=t1, y=t2, opacity=0.45, trendline="ols",
+                                color_discrete_sequence=[ACCENT],
+                                title=f"Daily Returns Scatter: {t1} vs {t2}")
+            fig_sc.update_layout(template=CHART_TEMPLATE, height=400)
+            st.plotly_chart(fig_sc, use_container_width=True)
+    else:
+        st.info("Select two different assets.")
+
+# ─────────────────────────────────────────────────────────────────────────────
+# TAB 4 · PORTFOLIO OPTIMISATION
+# ─────────────────────────────────────────────────────────────────────────────
+with tab_port:
+    if n_assets < 2:
+        st.info("Select at least 2 tickers.")
+    else:
+        mu  = rets_df.mean()
+        cov = rets_df.cov()
+
+        # ── Efficient Frontier ────────────────────────────────────────────────
+        st.subheader("Efficient Frontier")
+        with st.spinner("Simulating portfolios…"):
+            st.plotly_chart(chart_ef(mu, cov, avail), use_container_width=True)
+
+        # ── Optimal portfolio weights table ───────────────────────────────────
+        st.subheader("Optimal Portfolio Allocations")
+        wts_dict = {
+            "Equal Weight":   w_equal(n_assets),
+            "Min Variance":   w_min_var(mu, cov),
+            "Max Sharpe":     w_max_sharpe(mu, cov),
+            "Risk Parity":    w_risk_parity(cov.values),
+            "Inv. Volatility":w_inv_vol(rets_df),
+        }
+        wts_df = pd.DataFrame(wts_dict, index=avail).applymap(lambda x: f"{x:.1%}")
+        st.dataframe(wts_df, use_container_width=True)
+
+        st.divider()
+
+        # ── Portfolio styles backtest ─────────────────────────────────────────
+        st.subheader("Portfolio Styles — Backtested Performance")
+        st.caption("Monthly rebalancing · in-sample · Equal Weight used for periods with < 30 days of history")
+
+        with st.spinner("Backtesting portfolio styles…"):
+            style_rets = backtest_styles(prices)
+
+        st.plotly_chart(chart_styles_cumret(style_rets), use_container_width=True)
+
+        # ── Style metrics table ───────────────────────────────────────────────
+        st.subheader("Style Performance Metrics")
+        rows_s = []
+        for s_name, s_ret in style_rets.items():
+            if s_ret.empty:
+                continue
+            s_ret = s_ret.dropna()
+            s_val = (1 + s_ret).cumprod()
+            b, a  = beta_alpha(s_ret, spy_r)
+            rows_s.append({
+                "Style":          s_name,
+                "Ann. Return":    f"{ann_return(s_ret):.2%}",
+                "Ann. Volatility":f"{ann_vol(s_ret):.2%}",
+                "Sharpe":         f"{sharpe(s_ret):.2f}",
+                "Sortino":        f"{sortino(s_ret):.2f}",
+                "Calmar":         f"{calmar(s_ret, s_val):.2f}",
+                "Max Drawdown":   f"{max_dd(s_val):.2%}",
+                "Beta":           f"{b:.2f}",
+                "Alpha":          f"{a:.2%}",
+                f"VaR {confidence:.0%}": f"{hist_var(s_ret, confidence):.2%}",
+            })
+        st.dataframe(pd.DataFrame(rows_s).set_index("Style"), use_container_width=True)
+
+# ─────────────────────────────────────────────────────────────────────────────
+# TAB 5 · RISK METRICS
+# ─────────────────────────────────────────────────────────────────────────────
+with tab_risk:
+    confidence = st.slider(
+        "VaR confidence level", 0.90, 0.99,
+        st.session_state.get("var_conf", 0.95), 0.01,
+        key="var_conf",
+        help="Percentile used for all VaR / CVaR calculations in this tab",
+    )
+    st.subheader("Portfolio Risk (Equal-Weight)")
+
+    # ── Portfolio headline metrics ────────────────────────────────────────────
+    c1, c2, c3, c4 = st.columns(4)
+    with c1: mcard(f"Hist. VaR ({confidence:.0%})",  f"{hist_var(port_r, confidence):.2%}", False)
+    with c2: mcard(f"Param. VaR ({confidence:.0%})", f"{param_var(port_r, confidence):.2%}", False)
+    with c3: mcard(f"CVaR / ES ({confidence:.0%})",  f"{cvar(port_r, confidence):.2%}",  False)
+    with c4: mcard("Max Drawdown", f"{max_dd(port_val):.2%}", False)
+
+    st.plotly_chart(chart_dist(port_r, "Equal-Weight Portfolio"), use_container_width=True)
+    st.plotly_chart(chart_dd(port_val, "Equal-Weight Portfolio"), use_container_width=True)
+
+    var_win = st.slider("Rolling VaR window (days)", 20, 63, 30, key="rv_win")
+    st.plotly_chart(chart_rolling_var(port_r, "Portfolio", var_win, confidence),
+                    use_container_width=True)
+
+    st.divider()
+
+    # ── Individual stock drill-down ───────────────────────────────────────────
+    st.subheader("Individual Stock Risk")
+    risk_t = st.selectbox("Select ticker", avail, key="risk_t")
+    r_t = rets_df[risk_t]
+    p_t = prices[risk_t].dropna()
+
+    c1, c2, c3, c4 = st.columns(4)
+    with c1: mcard(f"Hist. VaR ({confidence:.0%})",  f"{hist_var(r_t, confidence):.2%}", False)
+    with c2: mcard(f"Param. VaR ({confidence:.0%})", f"{param_var(r_t, confidence):.2%}", False)
+    with c3: mcard(f"CVaR / ES ({confidence:.0%})",  f"{cvar(r_t, confidence):.2%}",  False)
+    with c4: mcard("Max Drawdown", f"{max_dd(p_t):.2%}", False)
+
+    st.plotly_chart(chart_dist(r_t, risk_t), use_container_width=True)
+    st.plotly_chart(chart_dd(p_t, risk_t),   use_container_width=True)
+    st.plotly_chart(chart_rolling_var(r_t, risk_t, var_win, confidence),
+                    use_container_width=True)
+
+    with st.expander("📖 Risk metric definitions"):
+        st.markdown(f"""
+| Metric | Definition |
+|--------|-----------|
+| **Historical VaR** | Loss not exceeded on {confidence:.0%} of days, read directly from the return distribution |
+| **Parametric VaR** | Assumes normally distributed returns; uses μ and σ to derive the {confidence:.0%} quantile |
+| **CVaR / ES** | Expected loss *given* VaR is breached — a coherent, tail-sensitive measure |
+| **Max Drawdown** | Largest peak-to-trough decline in the portfolio value over the period |
+""")
+
+# ─────────────────────────────────────────────────────────────────────────────
+# TAB 6 · MONTE CARLO
+# ─────────────────────────────────────────────────────────────────────────────
+with tab_mc:
+    col_mc1, col_mc2 = st.columns(2)
+    mc_sims = col_mc1.slider(
+        "Monte Carlo paths", 100, 800, 300, 100,
+        key="mc_paths",
+        help="Number of simulated price paths (more = smoother but slower)",
+    )
+    mc_days = col_mc2.slider("Forecast horizon (trading days)", 21, 504, 252, 21)
+    np.random.seed(42)
+
+    # ── Portfolio simulation ──────────────────────────────────────────────────
+    st.subheader("Portfolio Monte Carlo Simulation")
+    port_log_r = np.log(port_val / port_val.shift(1)).dropna()
+    paths_port = mc_paths(float(port_val.iloc[-1]), port_log_r, mc_sims, mc_days)
+    st.plotly_chart(chart_mc(paths_port, "Equal-Weight Portfolio", float(port_val.iloc[-1])),
+                    use_container_width=True)
+
+    term_port = paths_port[-1]
+    c1, c2, c3, c4 = st.columns(4)
+    with c1: mcard("Median terminal value",  f"{np.percentile(term_port,50):.3f}")
+    with c2: mcard("10th pct (bear)",        f"{np.percentile(term_port,10):.3f}", False)
+    with c3: mcard("90th pct (bull)",        f"{np.percentile(term_port,90):.3f}", True)
+    with c4:
+        p_up = (term_port > float(port_val.iloc[-1])).mean()
+        mcard("P(value > today)", f"{p_up:.1%}", p_up > 0.5)
+
+    fig_th = go.Figure()
+    fig_th.add_trace(go.Histogram(x=term_port, nbinsx=60,
+                                  marker_color=ACCENT, opacity=0.75))
+    fig_th.add_vline(x=float(port_val.iloc[-1]),
+                     line=dict(color="white", dash="dash"),
+                     annotation_text="Current")
+    _layout(fig_th, f"Portfolio — Terminal Value Distribution ({mc_days}d)",
+            xaxis_title="Portfolio Value", yaxis_title="Frequency", h=360)
+    st.plotly_chart(fig_th, use_container_width=True)
+
+    st.divider()
+
+    # ── Single-stock simulation ───────────────────────────────────────────────
+    st.subheader("Single Stock Monte Carlo Simulation")
+    mc_t = st.selectbox("Select ticker", avail, key="mc_t")
+    mc_prices = prices[mc_t].dropna()
+    mc_log_r  = np.log(mc_prices / mc_prices.shift(1)).dropna()
+    last_px   = float(mc_prices.iloc[-1])
+    paths_s   = mc_paths(last_px, mc_log_r, mc_sims, mc_days)
+    st.plotly_chart(chart_mc(paths_s, mc_t, last_px), use_container_width=True)
+
+    term_s = paths_s[-1]
+    c1, c2, c3, c4 = st.columns(4)
+    with c1: mcard("Median terminal price", f"${np.percentile(term_s,50):,.2f}")
+    with c2: mcard("10th pct (bear)",       f"${np.percentile(term_s,10):,.2f}", False)
+    with c3: mcard("90th pct (bull)",       f"${np.percentile(term_s,90):,.2f}", True)
+    with c4:
+        p_up_s = (term_s > last_px).mean()
+        mcard("P(price > today)", f"{p_up_s:.1%}", p_up_s > 0.5)
+
+    fig_th2 = go.Figure()
+    fig_th2.add_trace(go.Histogram(x=term_s, nbinsx=60,
+                                   marker_color=ACCENT, opacity=0.75))
+    fig_th2.add_vline(x=last_px, line=dict(color="white", dash="dash"),
+                      annotation_text="Current price")
+    _layout(fig_th2, f"{mc_t} — Terminal Price Distribution ({mc_days}d)",
+            xaxis_title="Price (USD)", yaxis_title="Frequency", h=360)
+    st.plotly_chart(fig_th2, use_container_width=True)
