@@ -980,7 +980,7 @@ def mcard(label, value, pos=None):
 
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 with st.sidebar:
-    st.title("Portfolio Management Dashboard")
+    st.title("Portfolio Dashboard")
     st.caption("HSG Master · Programming Project")
     st.divider()
     st.markdown("**Alpha Vantage API Key**")
