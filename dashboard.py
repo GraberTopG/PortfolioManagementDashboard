@@ -822,8 +822,9 @@ def chart_mc(paths, label, last_val) -> go.Figure:
 
 def chart_corr_heatmap(prices: pd.DataFrame) -> go.Figure:
     corr = prices.pct_change().dropna().corr()
-    # Bloomberg diverging scale: red (negative) → near-black (zero) → blue (positive)
-    bbg_div = [[0.0, "#E53935"], [0.5, "#111519"], [1.0, "#00A8E8"]]
+    # Diverging scale: red (negative) → blue-grey (zero) → Bloomberg blue (positive)
+    # Mid-point #37474F matches the scatter-cloud grey used on the efficient frontier
+    bbg_div = [[0.0, "#E53935"], [0.5, "#37474F"], [1.0, "#00A8E8"]]
     fig = px.imshow(corr, text_auto=".2f", color_continuous_scale=bbg_div,
                     zmin=-1, zmax=1, title="Pairwise Return Correlation")
     fig.update_layout(
