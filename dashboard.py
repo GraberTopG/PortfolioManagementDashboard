@@ -80,10 +80,6 @@ UNIVERSE = {
     "Utilities": [
         "NEE","DUK","SO","AEP","D","EXC","PCG","XEL","ES","AWK",
     ],
-    "ETFs": [
-        "SPY","QQQ","IWM","AGG","TLT","GLD","VTI","EFA","EEM","HYG",
-        "XLF","XLK","XLE","XLV","XLI","XLP",
-    ],
 }
 ALL_TICKERS = [t for group in UNIVERSE.values() for t in group]
 AV_BASE        = "https://www.alphavantage.co/query"
@@ -177,13 +173,6 @@ COMPANY_NAMES = {
     "AEP":"American Electric Power","D":"Dominion Energy",         "EXC":"Exelon",
     "PCG":"PG&E",                   "XEL":"Xcel Energy",           "ES":"Eversource Energy",
     "AWK":"American Water Works",
-    # ETFs
-    "SPY":"S&P 500 ETF",            "QQQ":"NASDAQ-100 ETF",        "IWM":"Russell 2000 ETF",
-    "AGG":"US Bond ETF",            "TLT":"20yr Treasury ETF",     "GLD":"Gold ETF",
-    "VTI":"Total Market ETF",       "EFA":"Intl Developed ETF",    "EEM":"Emerging Markets ETF",
-    "HYG":"High Yield Bond ETF",    "XLF":"Financials Sector ETF", "XLK":"Technology Sector ETF",
-    "XLE":"Energy Sector ETF",      "XLV":"Healthcare Sector ETF", "XLI":"Industrials Sector ETF",
-    "XLP":"Staples Sector ETF",
 }
 
 os.makedirs(CACHE_DIR, exist_ok=True)
