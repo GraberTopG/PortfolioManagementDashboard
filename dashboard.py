@@ -697,10 +697,11 @@ def chart_ef(mu, cov, tickers, user_weights=None, user_label="Your Portfolio") -
 def chart_styles_cumret(style_rets: dict) -> go.Figure:
     series = {s: (1 + r).cumprod() for s, r in style_rets.items() if not r.empty}
     colors_map = {
-        "Equal Weight":  ACCENT,
-        "Min Variance":  BLUE,
-        "Mean-Variance": GOLD,
-        "Risk Parity":   GREEN,
+        "Your Portfolio": "#E0E4EA",   # near-white — matches EF custom marker
+        "Equal Weight":   ACCENT,
+        "Min Variance":   BLUE,
+        "Mean-Variance":  GOLD,
+        "Risk Parity":    GREEN,
     }
     fig = go.Figure()
     for name, p in series.items():
@@ -1127,15 +1128,13 @@ with tab_port:
 
         # ── Optimal portfolio weights table ───────────────────────────────────
         st.subheader("Optimal Portfolio Allocations")
-        wts_dict: dict[str, np.ndarray] = {}
-        if weight_mode == "Custom":
-            wts_dict["Your Portfolio"] = user_w
-        wts_dict.update({
-            "Equal Weight":  w_equal(n_assets),
-            "Min Variance":  w_min_var(mu, cov),
-            "Mean-Variance": w_max_sharpe(mu, cov),   # tangency portfolio = Max Sharpe
-            "Risk Parity":   w_inv_vol(rets_df),       # inverse-volatility weighting
-        })
+        wts_dict: dict[str, np.ndarray] = {
+            "Your Portfolio": user_w,
+            "Equal Weight":   w_equal(n_assets),
+            "Min Variance":   w_min_var(mu, cov),
+            "Mean-Variance":  w_max_sharpe(mu, cov),
+            "Risk Parity":    w_inv_vol(rets_df),
+        }
         wts_df = pd.DataFrame(wts_dict, index=avail).map(lambda x: f"{x:.1%}")
         st.dataframe(wts_df, use_container_width=True)
 
@@ -1222,6 +1221,8 @@ no return forecasts.
 
         with st.spinner("Backtesting portfolio styles…"):
             style_rets = backtest_styles(prices)
+        # Prepend the user's custom/equal-weight portfolio so it appears first
+        style_rets = {"Your Portfolio": (rets_df * user_w).sum(axis=1)} | style_rets
 
         st.plotly_chart(chart_styles_cumret(style_rets), use_container_width=True)
 
