@@ -37,13 +37,53 @@ DEFAULT_TICKERS   = ["AAPL", "MSFT", "GOOGL", "AMZN", "META", "NVDA", "JPM", "GS
 BENCHMARK_TICKERS = ["SPY", "AGG"]
 
 UNIVERSE = {
-    "🖥️ Technology":  ["AAPL","MSFT","GOOGL","AMZN","META","NVDA","TSLA","NFLX",
-                        "AMD","ORCL","CRM","ADBE","INTC","QCOM"],
-    "🏦 Finance":      ["JPM","GS","BAC","MS","BLK","V","MA"],
-    "🏥 Healthcare":   ["JNJ","UNH","PFE","ABBV"],
-    "🛒 Consumer":     ["KO","MCD","NKE","WMT","TSCO"],
-    "⚡ Energy":       ["XOM","CVX"],
-    "📊 ETFs":         ["SPY","QQQ","IWM","AGG","TLT","GLD"],
+    "Technology": [
+        "AAPL","MSFT","GOOGL","AMZN","META","NVDA","TSLA","NFLX","AMD","ORCL",
+        "CRM","ADBE","INTC","QCOM","AVGO","TXN","NOW","PANW","INTU","CSCO",
+        "IBM","ACN","AMAT","MU","KLAC","LRCX","SNPS","CDNS","FTNT","HPQ",
+    ],
+    "Financials": [
+        "JPM","GS","BAC","MS","BLK","V","MA","C","WFC","AXP",
+        "SCHW","SPGI","ICE","CME","MCO","PGR","AON","MET","TFC","USB",
+        "PNC","COF","DFS","FITB","KEY",
+    ],
+    "Healthcare": [
+        "JNJ","UNH","PFE","ABBV","MRK","LLY","BMY","AMGN","GILD","MDT",
+        "TMO","ABT","ISRG","SYK","BSX","ELV","CVS","HUM","CI","DHR",
+        "VRTX","REGN","ZBH","BDX","IQV",
+    ],
+    "Consumer Discretionary": [
+        "MCD","NKE","TSCO","HD","LOW","SBUX","TGT","CMG","YUM","BKNG",
+        "MAR","HLT","F","GM","ORLY","AZO","ROST","TJX","VFC","PVH",
+    ],
+    "Consumer Staples": [
+        "WMT","KO","PG","PEP","COST","CL","KMB","GIS","MO","PM",
+        "MDLZ","KHC","SYY","CHD","CAG",
+    ],
+    "Industrials": [
+        "BA","CAT","HON","GE","LMT","RTX","DE","UNP","UPS","FDX",
+        "MMM","EMR","ETN","GD","NOC","PH","ROK","TDG","CTAS","RSG",
+    ],
+    "Energy": [
+        "XOM","CVX","COP","SLB","EOG","MPC","OXY","HAL","PSX","VLO",
+        "HES","DVN","BKR","FANG","MRO",
+    ],
+    "Communication": [
+        "T","VZ","CMCSA","DIS","CHTR","WBD","PARA","FOXA","OMC","IPG",
+    ],
+    "Real Estate": [
+        "AMT","PLD","CCI","EQIX","SPG","O","WELL","AVB","EQR","PSA",
+    ],
+    "Materials": [
+        "LIN","APD","SHW","NEM","FCX","NUE","PPG","ALB","CF","MOS",
+    ],
+    "Utilities": [
+        "NEE","DUK","SO","AEP","D","EXC","PCG","XEL","ES","AWK",
+    ],
+    "ETFs": [
+        "SPY","QQQ","IWM","AGG","TLT","GLD","VTI","EFA","EEM","HYG",
+        "XLF","XLK","XLE","XLV","XLI","XLP",
+    ],
 }
 ALL_TICKERS = [t for group in UNIVERSE.values() for t in group]
 AV_BASE        = "https://www.alphavantage.co/query"
@@ -53,26 +93,91 @@ ACCENT, RED, BLUE, GOLD = "#00d4aa", "#ff4b4b", "#4b8bff", "#ffd700"
 
 COMPANY_NAMES = {
     # Technology
-    "AAPL": "Apple",         "MSFT": "Microsoft",     "GOOGL": "Alphabet",
-    "AMZN": "Amazon",        "META": "Meta Platforms", "NVDA": "NVIDIA",
-    "TSLA": "Tesla",         "NFLX": "Netflix",        "AMD": "AMD",
-    "ORCL": "Oracle",        "CRM": "Salesforce",      "ADBE": "Adobe",
-    "INTC": "Intel",         "QCOM": "Qualcomm",
-    # Finance
-    "JPM": "JPMorgan Chase", "GS": "Goldman Sachs",    "BAC": "Bank of America",
-    "MS":  "Morgan Stanley", "BLK": "BlackRock",       "V": "Visa",
-    "MA":  "Mastercard",
+    "AAPL":"Apple",                 "MSFT":"Microsoft",           "GOOGL":"Alphabet",
+    "AMZN":"Amazon",                "META":"Meta Platforms",       "NVDA":"NVIDIA",
+    "TSLA":"Tesla",                 "NFLX":"Netflix",              "AMD":"AMD",
+    "ORCL":"Oracle",                "CRM":"Salesforce",            "ADBE":"Adobe",
+    "INTC":"Intel",                 "QCOM":"Qualcomm",             "AVGO":"Broadcom",
+    "TXN":"Texas Instruments",      "NOW":"ServiceNow",            "PANW":"Palo Alto Networks",
+    "INTU":"Intuit",                "CSCO":"Cisco",                "IBM":"IBM",
+    "ACN":"Accenture",              "AMAT":"Applied Materials",    "MU":"Micron Technology",
+    "KLAC":"KLA Corp",              "LRCX":"Lam Research",         "SNPS":"Synopsys",
+    "CDNS":"Cadence Design",        "FTNT":"Fortinet",             "HPQ":"HP Inc.",
+    # Financials
+    "JPM":"JPMorgan Chase",         "GS":"Goldman Sachs",          "BAC":"Bank of America",
+    "MS":"Morgan Stanley",          "BLK":"BlackRock",             "V":"Visa",
+    "MA":"Mastercard",              "C":"Citigroup",               "WFC":"Wells Fargo",
+    "AXP":"American Express",       "SCHW":"Charles Schwab",       "SPGI":"S&P Global",
+    "ICE":"Intercontinental Exch.", "CME":"CME Group",             "MCO":"Moody's",
+    "PGR":"Progressive",            "AON":"Aon",                   "MET":"MetLife",
+    "TFC":"Truist Financial",       "USB":"U.S. Bancorp",          "PNC":"PNC Financial",
+    "COF":"Capital One",            "DFS":"Discover Financial",    "FITB":"Fifth Third Bancorp",
+    "KEY":"KeyCorp",
     # Healthcare
-    "JNJ": "Johnson & Johnson", "UNH": "UnitedHealth", "PFE": "Pfizer",
-    "ABBV": "AbbVie",
-    # Consumer
-    "KO":   "Coca-Cola",     "MCD": "McDonald's",      "NKE": "Nike",
-    "WMT":  "Walmart",       "TSCO": "Tractor Supply",
+    "JNJ":"Johnson & Johnson",      "UNH":"UnitedHealth",          "PFE":"Pfizer",
+    "ABBV":"AbbVie",                "MRK":"Merck",                 "LLY":"Eli Lilly",
+    "BMY":"Bristol-Myers Squibb",   "AMGN":"Amgen",                "GILD":"Gilead Sciences",
+    "MDT":"Medtronic",              "TMO":"Thermo Fisher",         "ABT":"Abbott Labs",
+    "ISRG":"Intuitive Surgical",    "SYK":"Stryker",               "BSX":"Boston Scientific",
+    "ELV":"Elevance Health",        "CVS":"CVS Health",            "HUM":"Humana",
+    "CI":"Cigna",                   "DHR":"Danaher",               "VRTX":"Vertex Pharma.",
+    "REGN":"Regeneron",             "ZBH":"Zimmer Biomet",         "BDX":"Becton Dickinson",
+    "IQV":"IQVIA",
+    # Consumer Discretionary
+    "MCD":"McDonald's",             "NKE":"Nike",                  "TSCO":"Tractor Supply",
+    "HD":"Home Depot",              "LOW":"Lowe's",                "SBUX":"Starbucks",
+    "TGT":"Target",                 "CMG":"Chipotle",              "YUM":"Yum! Brands",
+    "BKNG":"Booking Holdings",      "MAR":"Marriott",              "HLT":"Hilton",
+    "F":"Ford",                     "GM":"General Motors",         "ORLY":"O'Reilly Auto Parts",
+    "AZO":"AutoZone",               "ROST":"Ross Stores",          "TJX":"TJX Companies",
+    "VFC":"VF Corp",                "PVH":"PVH Corp",
+    # Consumer Staples
+    "WMT":"Walmart",                "KO":"Coca-Cola",              "PG":"Procter & Gamble",
+    "PEP":"PepsiCo",                "COST":"Costco",               "CL":"Colgate-Palmolive",
+    "KMB":"Kimberly-Clark",         "GIS":"General Mills",         "MO":"Altria",
+    "PM":"Philip Morris",           "MDLZ":"Mondelez",             "KHC":"Kraft Heinz",
+    "SYY":"Sysco",                  "CHD":"Church & Dwight",       "CAG":"Conagra Brands",
+    # Industrials
+    "BA":"Boeing",                  "CAT":"Caterpillar",           "HON":"Honeywell",
+    "GE":"GE Aerospace",            "LMT":"Lockheed Martin",       "RTX":"RTX Corp",
+    "DE":"Deere & Co",              "UNP":"Union Pacific",         "UPS":"UPS",
+    "FDX":"FedEx",                  "MMM":"3M",                    "EMR":"Emerson Electric",
+    "ETN":"Eaton",                  "GD":"General Dynamics",       "NOC":"Northrop Grumman",
+    "PH":"Parker Hannifin",         "ROK":"Rockwell Automation",   "TDG":"TransDigm",
+    "CTAS":"Cintas",                "RSG":"Republic Services",
     # Energy
-    "XOM": "ExxonMobil",     "CVX": "Chevron",
+    "XOM":"ExxonMobil",             "CVX":"Chevron",               "COP":"ConocoPhillips",
+    "SLB":"SLB",                    "EOG":"EOG Resources",         "MPC":"Marathon Petroleum",
+    "OXY":"Occidental Petroleum",   "HAL":"Halliburton",           "PSX":"Phillips 66",
+    "VLO":"Valero Energy",          "HES":"Hess",                  "DVN":"Devon Energy",
+    "BKR":"Baker Hughes",           "FANG":"Diamondback Energy",   "MRO":"Marathon Oil",
+    # Communication
+    "T":"AT&T",                     "VZ":"Verizon",                "CMCSA":"Comcast",
+    "DIS":"Walt Disney",            "CHTR":"Charter Comm.",        "WBD":"Warner Bros. Discovery",
+    "PARA":"Paramount Global",      "FOXA":"Fox Corp",             "OMC":"Omnicom",
+    "IPG":"Interpublic Group",
+    # Real Estate
+    "AMT":"American Tower",         "PLD":"Prologis",              "CCI":"Crown Castle",
+    "EQIX":"Equinix",               "SPG":"Simon Property Group",  "O":"Realty Income",
+    "WELL":"Welltower",             "AVB":"AvalonBay Communities", "EQR":"Equity Residential",
+    "PSA":"Public Storage",
+    # Materials
+    "LIN":"Linde",                  "APD":"Air Products",          "SHW":"Sherwin-Williams",
+    "NEM":"Newmont",                "FCX":"Freeport-McMoRan",      "NUE":"Nucor",
+    "PPG":"PPG Industries",         "ALB":"Albemarle",             "CF":"CF Industries",
+    "MOS":"Mosaic",
+    # Utilities
+    "NEE":"NextEra Energy",         "DUK":"Duke Energy",           "SO":"Southern Company",
+    "AEP":"American Electric Power","D":"Dominion Energy",         "EXC":"Exelon",
+    "PCG":"PG&E",                   "XEL":"Xcel Energy",           "ES":"Eversource Energy",
+    "AWK":"American Water Works",
     # ETFs
-    "SPY": "S&P 500 ETF",    "QQQ": "NASDAQ-100 ETF",  "IWM": "Russell 2000 ETF",
-    "AGG": "US Bond ETF",    "TLT": "20yr Treasury ETF","GLD": "Gold ETF",
+    "SPY":"S&P 500 ETF",            "QQQ":"NASDAQ-100 ETF",        "IWM":"Russell 2000 ETF",
+    "AGG":"US Bond ETF",            "TLT":"20yr Treasury ETF",     "GLD":"Gold ETF",
+    "VTI":"Total Market ETF",       "EFA":"Intl Developed ETF",    "EEM":"Emerging Markets ETF",
+    "HYG":"High Yield Bond ETF",    "XLF":"Financials Sector ETF", "XLK":"Technology Sector ETF",
+    "XLE":"Energy Sector ETF",      "XLV":"Healthcare Sector ETF", "XLI":"Industrials Sector ETF",
+    "XLP":"Staples Sector ETF",
 }
 
 os.makedirs(CACHE_DIR, exist_ok=True)
@@ -505,8 +610,8 @@ def chart_ef(mu, cov, tickers) -> go.Figure:
 
     # Optimal portfolios + Capital Market Line
     opt_points = {
-        "⭐ Min Variance":  (w_min_var(mu, cov),  BLUE),
-        "⭐ Max Sharpe":    (w_max_sharpe(mu, cov), ACCENT),
+        "Min Variance":  (w_min_var(mu, cov),  BLUE),
+        "Max Sharpe":    (w_max_sharpe(mu, cov), ACCENT),
     }
     for label, (w, color) in opt_points.items():
         r_opt, v_opt, _ = _port_stats(w, mu.values, cov.values)
@@ -546,8 +651,8 @@ def chart_ef(mu, cov, tickers) -> go.Figure:
         annotations=[dict(
             x=0.01, y=0.99, xref="paper", yref="paper", showarrow=False,
             text=("Each dot = one random portfolio<br>"
-                  "⭐ = analytically optimal portfolios<br>"
-                  "◆ = individual stocks"),
+                  "Star marker = analytically optimal portfolios<br>"
+                  "Diamond marker = individual stocks"),
             align="left", font=dict(size=10, color="#aaa"),
             bgcolor="rgba(0,0,0,0.4)", borderpad=6,
         )],
@@ -660,29 +765,29 @@ def mcard(label, value, pos=None):
 
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 with st.sidebar:
-    st.title("📈 Quant Dashboard")
+    st.title("Quant Dashboard")
     st.caption("HSG Master · Programming Project")
     st.divider()
     st.markdown("**Alpha Vantage API Key**")
     st.markdown("[Get free key →](https://www.alphavantage.co/support/#api-key)")
     api_key = st.text_input("API key", placeholder="e.g. ABCDE12345")
-    load_btn = st.button("⬇ Load Data", type="primary", use_container_width=True)
+    load_btn = st.button("Load Data", type="primary", use_container_width=True)
     st.divider()
-    st.markdown("**Select Portfolio Tickers** (max 10)")
+    st.markdown("**Select Portfolio Tickers** (max 15)")
     tickers = st.multiselect(
         "Choose up to 10 stocks / ETFs",
         options=ALL_TICKERS,
         default=DEFAULT_TICKERS,
         format_func=lambda t: f"{t} ({COMPANY_NAMES.get(t, '')})",
     )
-    if len(tickers) > 10:
-        st.warning("⚠️ Maximum 10 tickers — only the first 10 will be used.")
-        tickers = tickers[:10]
+    if len(tickers) > 15:
+        st.warning("Maximum 15 tickers — only the first 15 will be used.")
+        tickers = tickers[:15]
     if not tickers:
         tickers = DEFAULT_TICKERS
 
     # Group labels as helper
-    with st.expander("📋 Available tickers by sector"):
+    with st.expander("Available tickers by sector"):
         for sector, members in UNIVERSE.items():
             st.caption(f"{sector}:  {' · '.join(members)}")
     col1, col2 = st.columns(2)
@@ -700,7 +805,7 @@ if not api_key:
     st.stop()
 
 if not load_btn and "data_loaded" not in st.session_state:
-    st.info("API key entered — click **⬇ Load Data** to fetch market data.")
+    st.info("API key entered — click **Load Data** to fetch market data.")
     st.stop()
 
 # ── Fetch portfolio data ──────────────────────────────────────────────────────
@@ -747,12 +852,12 @@ st.divider()
 #  TAB LAYOUT
 # ══════════════════════════════════════════════════════════════════════════════
 tab_overview, tab_tech, tab_corr, tab_port, tab_risk, tab_mc = st.tabs([
-    "🏠 Overview",
-    "📊 Technical Analysis",
-    "🔗 Correlation",
-    "💼 Portfolio Optimisation",
-    "⚠️ Risk Metrics",
-    "🎲 Monte Carlo",
+    "Overview",
+    "Technical Analysis",
+    "Correlation",
+    "Portfolio Optimisation",
+    "Risk Metrics",
+    "Monte Carlo",
 ])
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -803,7 +908,7 @@ with tab_tech:
     else:
         st.plotly_chart(chart_price_ta(ohlcv, primary), use_container_width=True)
         st.plotly_chart(chart_rsi_macd(ohlcv["Close"], primary), use_container_width=True)
-        with st.expander("📖 Indicator guide"):
+        with st.expander("Indicator guide"):
             st.markdown("""
 | Indicator | Signal |
 |-----------|--------|
@@ -880,6 +985,77 @@ with tab_port:
         st.divider()
 
         # ── Portfolio styles backtest ─────────────────────────────────────────
+        # ── Strategy methodology ──────────────────────────────────────────────
+        with st.expander("Strategy methodology — formulas and intuition"):
+            st.markdown("""
+Five portfolio construction strategies are compared. All optimisations are
+solved subject to **full investment** (weights sum to 1) and **long-only**
+constraints (no short selling).
+
+---
+#### 1. Equal Weight (1/N)
+The simplest possible rule: every asset receives the same allocation.
+""")
+            st.latex(r"w_i = \frac{1}{N} \qquad \forall\, i = 1, \ldots, N")
+            st.markdown("""
+No estimation of expected returns or covariances is needed. Research (DeMiguel
+et al., 2009) shows it is surprisingly hard to beat out-of-sample.
+
+---
+#### 2. Minimum Variance
+Finds the portfolio with the lowest possible portfolio volatility, ignoring
+expected returns entirely.
+""")
+            st.latex(r"""
+\min_{w} \quad w^\top \Sigma\, w \\[6pt]
+\text{subject to} \quad \mathbf{1}^\top w = 1, \quad w_i \ge 0
+""")
+            st.markdown(r"""
+$\Sigma$ is the $N \times N$ covariance matrix of daily returns. The solution
+concentrates in low-volatility, low-correlation assets.
+
+---
+#### 3. Maximum Sharpe (Tangency Portfolio)
+Maximises the ratio of excess return to portfolio volatility — the
+**Sharpe ratio**.
+""")
+            st.latex(r"""
+\max_{w} \quad \frac{w^\top \mu - r_f}{\sqrt{w^\top \Sigma\, w}} \\[6pt]
+\text{subject to} \quad \mathbf{1}^\top w = 1, \quad w_i \ge 0
+""")
+            st.markdown(r"""
+$\mu$ is the vector of annualised mean returns; $r_f$ is the risk-free rate
+($r_f = 5.25\%$). In Mean–Variance space this portfolio lies at the tangency
+point of the Capital Market Line with the efficient frontier.
+
+---
+#### 4. Risk Parity
+Each asset contributes an **equal share** of total portfolio risk.
+""")
+            st.latex(r"""
+RC_i = w_i \cdot \frac{(\Sigma w)_i}{\sigma_p} = \frac{\sigma_p}{N}
+\qquad \forall\, i
+""")
+            st.markdown(r"""
+where $\sigma_p = \sqrt{w^\top \Sigma\, w}$ is portfolio volatility and
+$RC_i$ is asset $i$'s risk contribution. The solution is found numerically by
+minimising the variance of risk contributions across all assets. Risk parity
+implicitly tilts towards low-volatility assets (bonds in a mixed portfolio).
+
+---
+#### 5. Inverse Volatility
+A simpler approximation of risk parity that ignores correlations: weight each
+asset in inverse proportion to its individual volatility.
+""")
+            st.latex(r"""
+w_i = \frac{1/\sigma_i}{\displaystyle\sum_{j=1}^{N} 1/\sigma_j}
+""")
+            st.markdown(r"""
+$\sigma_i$ is the annualised volatility of asset $i$. This rule requires no
+matrix inversion and performs well when correlations are similar across assets.
+""")
+
+        st.divider()
         st.subheader("Portfolio Styles — Backtested Performance")
         st.caption("Monthly rebalancing · in-sample · Equal Weight used for periods with < 30 days of history")
 
@@ -956,7 +1132,7 @@ with tab_risk:
     st.plotly_chart(chart_rolling_var(r_t, risk_t, var_win, confidence),
                     use_container_width=True)
 
-    with st.expander("📖 Risk metric definitions"):
+    with st.expander("Risk metric definitions"):
         st.markdown(f"""
 | Metric | Definition |
 |--------|-----------|
