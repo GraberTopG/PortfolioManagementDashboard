@@ -75,6 +75,8 @@ streamlit run dashboard.py
 
 Data is fetched automatically via **yfinance** - no API key required. Full history available from 2000 to today.
 
+> **Note on data history:** All calculations require every selected ticker to have a price on the same date. The effective start date is therefore determined by the **most recently listed ticker** in your selection. For example, adding META (IPO May 2012) limits the common history to May 2012 onward regardless of the date range you enter. A warning banner is shown whenever the actual data window is shorter than the selected period, identifying which ticker is the bottleneck.
+
 ---
 
 ## Ticker universe

@@ -1136,10 +1136,29 @@ port_val = (1 + port_r).cumprod()
 spy_r    = bench_prices["SPY"].pct_change().dropna() if "SPY" in bench_prices.columns else pd.Series(dtype=float)
 
 # ── Header ────────────────────────────────────────────────────────────────────
+# rets_df starts from the first date ALL tickers simultaneously have returns.
+# Identify the bottleneck ticker (latest individual data start).
+_ticker_starts  = {t: _close[t].dropna().index[0] for t in avail}
+_common_start   = rets_df.index[0]
+_limiting_t     = max(_ticker_starts, key=lambda t: _ticker_starts[t])
+
 st.title("US Large Cap Long Only Portfolio Dashboard")
-st.caption(f"Universe: {', '.join(avail)}  ·  "
-           f"{prices.index[0].strftime('%d %b %Y')} to {prices.index[-1].strftime('%d %b %Y')}  ·  "
-           f"{len(prices)} trading days")
+st.caption(
+    f"Universe: {', '.join(avail)}  ·  "
+    f"{_common_start.strftime('%d %b %Y')} to {prices.index[-1].strftime('%d %b %Y')}  ·  "
+    f"{len(rets_df)} trading days"
+)
+
+if _common_start > pd.Timestamp(start_dt):
+    st.warning(
+        f"**Data starts from {_common_start.strftime('%d %b %Y')}, not {start_dt}.** "
+        f"**{_limiting_t}** is the limiting ticker — its price history only goes back to "
+        f"**{_ticker_starts[_limiting_t].strftime('%d %b %Y')}**. "
+        f"All calculations (backtest, metrics, charts) use the period where every "
+        f"selected ticker has data simultaneously. "
+        f"To extend the history, remove tickers with short price histories."
+    )
+
 st.divider()
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1555,11 +1574,19 @@ with tab_port:
 
         # ── Strategy methodology ──────────────────────────────────────────────
         st.subheader("Methodology")
-        st.markdown("""
+        st.markdown(f"""
 All optimisations are solved subject to **full investment** (weights sum to 1)
 and **long-only** constraints (no short selling). $N$ denotes the number of
 assets, $\\Sigma$ the covariance matrix of returns, and $\\mu$ the vector of
 mean returns.
+
+**Common data period.** Every calculation — backtest, covariance matrix,
+return statistics — requires all selected tickers to have a price simultaneously.
+The data window therefore starts from **{_common_start.strftime('%d %b %Y')}**,
+the earliest date on which every ticker in your selection has a valid price.
+If a ticker was listed later than the others (e.g. a recent IPO), it shifts
+the entire common start date forward. To access a longer history, remove
+short-history tickers from the selection.
 """)
 
         st.markdown("**1. Equal Weight (1/N)**")
