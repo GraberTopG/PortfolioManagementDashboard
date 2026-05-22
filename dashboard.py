@@ -1,16 +1,39 @@
 """
-Quantitative Finance Dashboard
-================================
-HSG Master – Programming with Advanced Computer Languages
+US Large Cap Long Only Portfolio Dashboard
+==========================================
+HSG Master – Programming with Advanced Computer Languages – 2025/26
 
-Tabs:
-  1. Overview      – allocation, sector exposure, performance vs benchmarks
-  2. Risk          – VaR/CVaR/drawdown, individual stock drill-down, GBM Monte Carlo simulation
-  3. Correlation   – heatmap + rolling pairwise correlation + OLS scatter
-  4. Optimisation  – style backtest, efficient frontier, optimal allocations
-  5. Technicals    – candlestick, MAs, Bollinger, RSI, MACD  (ticker selector inside)
+An interactive quantitative finance dashboard built with Streamlit and Plotly.
+Analytical framework draws on Markowitz mean-variance optimisation, risk parity,
+factor-based portfolio construction, drawdown analysis, and GBM Monte Carlo
+simulation. All market data is fetched live via yfinance — no API key required.
 
-Data: Yahoo Finance via yfinance — no API key required, full history from 2000.
+Tab structure (each tab answers one core portfolio question):
+  1. Overview      – "What do I own and how has it performed?"
+                     Allocation pies, sector exposure, benchmark comparison,
+                     performance metrics table (Sharpe, Alpha, VaR, etc.)
+  2. Risk          – "What are the risks of what I hold?"
+                     VaR/CVaR (historical + parametric), drawdown, rolling VaR,
+                     risk contribution per stock, rolling Sharpe, GBM Monte Carlo.
+  3. Correlation   – "How do my holdings move relative to each other?"
+                     Pairwise heatmap, rolling pairwise correlation, OLS scatter.
+  4. Optimisation  – "How should I construct or improve the portfolio?"
+                     Walk-forward style backtest, annual returns grid, efficient
+                     frontier with CML, optimal allocation table per strategy.
+  5. Technicals    – "What's the price action on individual names?"
+                     Candlestick + MA20/50 + Bollinger Bands, RSI, MACD.
+
+Key design choices:
+  - All prices fetched via yfinance with auto_adjust=True (split + dividend adjusted).
+  - Dollar volume used in Technicals to remove split-adjustment distortion.
+  - Walk-forward backtest: at each monthly rebalancing date only past data is used.
+  - Market Weight is a true buy-and-hold using historically estimated starting weights
+    (implied shares = current market cap / current price, applied to start-date price).
+  - Time-varying risk-free rate from ^IRX (3-month T-bill) used in Max Sharpe backtest.
+  - 40% single-stock cap enforced in all SLSQP optimisations.
+  - Minimum 63-day (3-month) lookback before covariance matrix is trusted.
+
+Dependencies: streamlit, plotly, pandas, numpy, scipy, yfinance, statsmodels
 """
 
 import numpy as np
@@ -222,47 +245,96 @@ def _yf_ohlcv(ticker: str, start: str, end: str) -> pd.DataFrame:
 # ══════════════════════════════════════════════════════════════════════════════
 
 def log_returns(p: pd.Series) -> pd.Series:
+    """Compute continuously compounded (log) daily returns: ln(P_t / P_{t-1})."""
     return np.log(p / p.shift(1)).dropna()
 
 def simple_returns(p: pd.Series) -> pd.Series:
+    """Compute simple daily percentage returns: (P_t - P_{t-1}) / P_{t-1}."""
     return p.pct_change().dropna()
 
 def ann_return(r: pd.Series) -> float:
+    """Annualise a daily return series by multiplying the mean by 252.
+
+    Note: this is a first-order approximation. For more precision over long
+    horizons use (1+r).prod()^(252/n) - 1, but the difference is small for
+    typical daily return magnitudes.
+    """
     return r.mean() * AF
 
 def ann_vol(r: pd.Series) -> float:
+    """Annualise daily return volatility using the square-root-of-time rule."""
     return r.std() * np.sqrt(AF)
 
 def sharpe(r: pd.Series, rf: float = RF) -> float:
+    """Annualised Sharpe ratio: (ann_return - rf) / ann_vol.
+
+    Returns np.nan if annualised volatility is zero (avoids division by zero).
+    """
     v = ann_vol(r)
     return (ann_return(r) - rf) / v if v else np.nan
 
 def sortino(r: pd.Series, rf: float = RF) -> float:
+    """Annualised Sortino ratio: uses downside deviation (negative returns only).
+
+    Penalises downside volatility only, unlike Sharpe which counts all vol.
+    Returns np.nan if there are no negative returns.
+    """
     dd = r[r < 0].std() * np.sqrt(AF)
     return (ann_return(r) - rf) / dd if dd else np.nan
 
 def max_dd(prices: pd.Series) -> float:
+    """Maximum drawdown: largest peak-to-trough decline in the price series.
+
+    Returns a negative float (e.g. -0.35 means a 35% max drawdown).
+    """
     return ((prices - prices.cummax()) / prices.cummax()).min()
 
 def dd_series(prices: pd.Series) -> pd.Series:
+    """Rolling drawdown series: current level vs running peak at each date."""
     return (prices - prices.cummax()) / prices.cummax()
 
 def calmar(r: pd.Series, prices: pd.Series) -> float:
+    """Calmar ratio: annualised return divided by absolute maximum drawdown.
+
+    Higher is better. Returns np.nan if max drawdown is zero.
+    """
     mdd = abs(max_dd(prices))
     return ann_return(r) / mdd if mdd else np.nan
 
 def hist_var(r: pd.Series, c: float = 0.95) -> float:
+    """Historical VaR at confidence level c.
+
+    Reads directly from the empirical return distribution: the loss level
+    exceeded on only (1-c) of trading days. Returned as a positive number
+    (e.g. 0.02 means a 2% daily loss threshold).
+    """
     return -np.percentile(r.dropna(), (1 - c) * 100)
 
 def param_var(r: pd.Series, c: float = 0.95) -> float:
+    """Parametric (Gaussian) VaR: assumes normally distributed daily returns.
+
+    VaR = -(mu + z_{1-c} * sigma), where z is the standard normal quantile.
+    Returned as a positive number. Underestimates tail risk for fat-tailed assets.
+    """
     return -(r.mean() + norm.ppf(1 - c) * r.std())
 
 def cvar(r: pd.Series, c: float = 0.95) -> float:
+    """Conditional VaR (Expected Shortfall) at confidence level c.
+
+    Average loss on the days that exceed the VaR threshold. Always >= VaR;
+    more sensitive to extreme tail events than VaR alone.
+    """
     v = hist_var(r, c)
     tail = r[r < -v]
     return -tail.mean() if len(tail) else v
 
 def beta_alpha(r: pd.Series, bench: pd.Series) -> tuple[float, float]:
+    """Compute CAPM beta and Jensen's alpha vs a benchmark return series.
+
+    Beta = Cov(r, bench) / Var(bench).
+    Alpha = ann_return(r) - rf - beta * (ann_return(bench) - rf), annualised.
+    Returns (nan, nan) if fewer than 10 overlapping observations.
+    """
     aligned = pd.concat([r, bench], axis=1).dropna()
     if len(aligned) < 10:
         return np.nan, np.nan
@@ -272,10 +344,15 @@ def beta_alpha(r: pd.Series, bench: pd.Series) -> tuple[float, float]:
     return b, a
 
 def win_rate(r: pd.Series) -> float:
+    """Fraction of trading days with a positive return."""
     return (r > 0).mean()
 
 def _fmt_num(val, fmt: str) -> str:
-    """Format a scalar; return '-' for NaN / inf."""
+    """Format a numeric scalar using the given format string.
+
+    Returns '-' for NaN, inf, or any non-numeric input, preventing 'nan'
+    strings from appearing in display tables.
+    """
     try:
         if np.isnan(val) or np.isinf(val):
             return "-"
@@ -286,6 +363,20 @@ def _fmt_num(val, fmt: str) -> str:
 def full_metrics(r: pd.Series, prices: pd.Series, bench_r: pd.Series,
                  conf: float = 0.95, port_w: np.ndarray | None = None,
                  bench_w: np.ndarray | None = None) -> dict:
+    """Compute the full performance metrics dictionary for display in the Overview table.
+
+    Args:
+        r:       Daily simple return series for the portfolio.
+        prices:  Cumulative price/value series (used for drawdown and Calmar).
+        bench_r: Benchmark daily return series (SPY) for Beta, Alpha, TE, IR.
+        conf:    VaR / CVaR confidence level (default 0.95).
+        port_w:  Portfolio weight vector — required for Active Share calculation.
+        bench_w: Benchmark weight vector — required for Active Share calculation.
+
+    Returns:
+        Ordered dict of pre-formatted metric strings ready for table display.
+        NaN-safe: all ratios use _fmt_num() to return '-' instead of 'nan'.
+    """
     b, a  = beta_alpha(r, bench_r)
     te    = tracking_error(r, bench_r)
     ir    = information_ratio(r, bench_r)
@@ -299,6 +390,7 @@ def full_metrics(r: pd.Series, prices: pd.Series, bench_r: pd.Series,
         "Max Drawdown":      f"{max_dd(prices):.2%}",
         "Beta (vs SPY)":     _fmt_num(b, "{:.2f}"),
         "Alpha (vs SPY)":    _fmt_num(a, "{:.2%}"),
+        # Tracking Error: show '-' when comparing a series to itself (TE = 0)
         "Tracking Error":    _fmt_num(te, "{:.2%}") if te > 1e-10 else "-",
         "Information Ratio": _fmt_num(ir, "{:.2f}"),
         "Active Share":      _fmt_num(ash, "{:.1%}"),
@@ -310,43 +402,76 @@ def full_metrics(r: pd.Series, prices: pd.Series, bench_r: pd.Series,
     }
 
 def tracking_error(r: pd.Series, bench_r: pd.Series) -> float:
+    """Annualised tracking error: std dev of daily active returns (r - bench)."""
     active = r.subtract(bench_r, fill_value=0)
     return active.std() * np.sqrt(AF)
 
 def information_ratio(r: pd.Series, bench_r: pd.Series) -> float:
+    """Information ratio: annualised active return divided by tracking error.
+
+    Measures how consistently the portfolio outperforms its benchmark per unit
+    of active risk. Returns np.nan if tracking error is zero.
+    """
     active = r.subtract(bench_r, fill_value=0)
     te = tracking_error(r, bench_r)
     return ann_return(active) / te if te else np.nan
 
 def active_share(port_w: np.ndarray, bench_w: np.ndarray) -> float:
-    """Active share vs a benchmark weight vector (same asset universe)."""
+    """Active Share vs a benchmark weight vector: 0.5 * sum|w_port - w_bench|.
+
+    Ranges from 0 (identical to benchmark) to 1 (no overlap). Both arrays
+    must cover the same asset universe in the same order.
+    """
     return 0.5 * np.sum(np.abs(port_w - bench_w))
 
 def hhi(weights: np.ndarray) -> float:
-    """Herfindahl-Hirschman Index — sum of squared weights."""
+    """Herfindahl-Hirschman Index: sum of squared portfolio weights.
+
+    HHI = 1 for a single-stock portfolio; 1/N for equal weight.
+    Effective number of positions = 1/HHI (inverse HHI).
+    """
     return float(np.sum(np.array(weights) ** 2))
 
 def rolling_vol(r: pd.Series, w: int = 21) -> pd.Series:
+    """Rolling annualised volatility over a window of w trading days."""
     return r.rolling(w, min_periods=5).std() * np.sqrt(AF)
 
 def rolling_sharpe(r: pd.Series, w: int = 252, rf: float = RF) -> pd.Series:
-    """Rolling annualised Sharpe ratio over a window of w trading days."""
+    """Rolling annualised Sharpe ratio over a trailing window of w trading days.
+
+    min_periods is set to max(21, w//4) so the series starts as soon as
+    at least one quarter of the window is filled, avoiding misleading early values.
+    """
     roll = r.rolling(w, min_periods=max(21, w // 4))
     return (roll.mean() * AF - rf) / (roll.std() * np.sqrt(AF))
 
 # ── Technical indicators ──────────────────────────────────────────────────────
 def bollinger(p, w=20, n=2):
+    """Compute Bollinger Bands: (upper, middle, lower) = MA ± n * rolling_std."""
     m = p.rolling(w).mean()
     s = p.rolling(w).std()
     return m + n*s, m, m - n*s
 
 def rsi(p, w=14):
+    """Compute RSI (Relative Strength Index) over w periods.
+
+    RSI = 100 - 100 / (1 + avg_gain / avg_loss).
+    Values above 70 indicate overbought; below 30 indicate oversold.
+    """
     d = p.diff()
     g = d.clip(lower=0).rolling(w).mean()
     l = (-d.clip(upper=0)).rolling(w).mean()
     return 100 - 100 / (1 + g / l)
 
 def macd(p, fast=12, slow=26, sig=9):
+    """Compute MACD line, signal line, and histogram.
+
+    MACD line  = EMA(fast) - EMA(slow)   (default: 12-day minus 26-day)
+    Signal line = EMA(MACD, sig)          (default: 9-day)
+    Histogram  = MACD line - Signal line  (positive = bullish momentum)
+
+    Returns: (macd_line, signal_line, histogram) as pd.Series.
+    """
     ml = p.ewm(span=fast, adjust=False).mean() - p.ewm(span=slow, adjust=False).mean()
     sl = ml.ewm(span=sig, adjust=False).mean()
     return ml, sl, ml - sl
@@ -358,11 +483,36 @@ def macd(p, fast=12, slow=26, sig=9):
 MAX_SINGLE_W = 0.40
 
 def _port_stats(w, mu, cov, rf=RF):
+    """Compute annualised portfolio return, volatility, and Sharpe ratio.
+
+    Args:
+        w:   Weight vector (sums to 1).
+        mu:  Daily mean return vector.
+        cov: Daily covariance matrix.
+        rf:  Annualised risk-free rate (default: global RF constant).
+
+    Returns:
+        (ann_return, ann_vol, sharpe) — all annualised.
+    """
     r = np.dot(w, mu) * AF
     v = np.sqrt(w @ cov @ w) * np.sqrt(AF)
     return r, v, (r - rf) / v if v else np.nan
 
 def _opt(objective, n, extra_constraints=None):
+    """Run SLSQP optimisation with full-investment and per-stock cap constraints.
+
+    Args:
+        objective:         Callable f(w) to minimise.
+        n:                 Number of assets.
+        extra_constraints: Optional list of additional scipy constraint dicts.
+
+    Returns:
+        Optimal weight vector as a numpy array.
+
+    Constraints enforced:
+        - Weights sum to 1 (fully invested, no cash).
+        - 0 <= w_i <= MAX_SINGLE_W = 40% (long-only with concentration cap).
+    """
     cons = [{"type": "eq", "fun": lambda w: w.sum() - 1}]
     if extra_constraints:
         cons += extra_constraints
@@ -371,23 +521,51 @@ def _opt(objective, n, extra_constraints=None):
     return res.x
 
 def w_min_var(mu, cov):
+    """Minimum Variance portfolio: minimise w'Σw subject to full-investment + cap.
+
+    Only the covariance matrix is needed — expected returns are not used,
+    which makes this strategy less sensitive to estimation error than Max Sharpe.
+    Zero weights are normal: the optimiser excludes high-variance assets.
+    """
     return _opt(lambda w: _port_stats(w, mu, cov)[1], len(mu))
 
 def w_max_sharpe(mu, cov, rf=RF):
-    """Tangency portfolio: maximise Sharpe using the given risk-free rate."""
+    """Maximum Sharpe (Tangency) portfolio: maximise (r - rf) / vol.
+
+    Uses the historically correct risk-free rate when called from the backtest,
+    eliminating look-ahead bias in the Sharpe optimisation.
+    Limitation: sample means are noisy estimators, so the optimiser tends to
+    concentrate in whichever stock had the highest in-sample Sharpe ratio.
+    """
     return _opt(lambda w: -_port_stats(w, mu, cov, rf)[2], len(mu))
 
 def w_inv_vol(rets_df):
+    """Inverse-volatility (Risk Parity) weights: w_i = (1/sigma_i) / sum(1/sigma_j).
+
+    Lower-volatility assets receive higher weights so each position contributes
+    roughly equal risk. Volatility is estimated from the expanding window in the
+    backtest, so early estimates are noisy but improve as data accumulates.
+    No return forecasts are needed — only the per-asset volatility.
+    """
     vols = rets_df.std()
     iv = 1 / vols
     return (iv / iv.sum()).values
 
 def w_equal(n):
+    """Equal-weight portfolio: w_i = 1/N for all i."""
     return np.ones(n) / n
 
 @st.cache_data(ttl=86400, show_spinner=False)
 def w_market_cap(tickers_csv: str) -> np.ndarray:
-    """Fetch current market caps via yfinance and return normalised weights."""
+    """Fetch CURRENT market-cap weights via yfinance fast_info.
+
+    NOTE: This function returns TODAY's market-cap weights. It is used only for
+    (1) display in the Optimal Portfolio Allocations table and (2) as the active-
+    share benchmark in full_metrics(). It is NOT used as starting weights in the
+    backtest — those are derived from historical prices to avoid look-ahead bias.
+    Falls back to equal weight (cap=1.0) for any ticker that fails to load.
+    Cached for 24 hours (ttl=86400) to limit API calls.
+    """
     tickers = [t.strip() for t in tickers_csv.split(",") if t.strip()]
     caps = []
     for t in tickers:
@@ -402,10 +580,18 @@ def w_market_cap(tickers_csv: str) -> np.ndarray:
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def load_rf_series(start: str, end: str) -> pd.Series:
-    """3-month T-bill annualised rate as a decimal time series (^IRX / 100).
+    """Download the 3-month US T-bill rate (^IRX) as a decimal annualised series.
+
     Used to supply the historically correct risk-free rate to the Max-Sharpe
-    optimiser at each backtest rebalancing date.
-    Falls back to the global RF constant if data is unavailable."""
+    optimiser at each backtest rebalancing date. Using a fixed RF rate for all
+    periods would introduce look-ahead bias (e.g. 5.25% RF applied to 2010-2020
+    when rates were near zero would systematically depress Sharpe estimates).
+
+    At each rebalancing date the backtest calls rf_series.asof(rebal) which
+    returns the last known T-bill rate on or before that date — no look-ahead.
+    Falls back to the global RF constant if ^IRX data is unavailable.
+    Cached for 1 hour (ttl=3600).
+    """
     try:
         raw = yf.download("^IRX", start=start, end=end,
                           progress=False, auto_adjust=True)
@@ -419,6 +605,18 @@ def load_rf_series(start: str, end: str) -> pd.Series:
         return pd.Series(dtype=float)
 
 def efficient_frontier_mc(mu, cov, n=500):
+    """Sample n random portfolios via Dirichlet weights to map the feasible set.
+
+    Dirichlet(ones) produces uniformly distributed weight vectors on the simplex
+    (all weights positive, sum to 1). Each portfolio's (vol, return, Sharpe) is
+    computed so the scatter cloud can be colour-coded by Sharpe ratio.
+
+    Note: these are NOT constrained by MAX_SINGLE_W — they represent the full
+    theoretical feasible set for illustration. The optimised portfolios on the
+    efficient frontier DO respect the 40% cap.
+
+    Returns: (vols, returns, sharpes, weights_list) as numpy arrays.
+    """
     n_assets = len(mu)
     vols, rets, srs, wts = [], [], [], []
     for _ in range(n):
