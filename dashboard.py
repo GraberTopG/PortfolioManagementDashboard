@@ -933,24 +933,24 @@ hr { border-color: #1C2128 !important; opacity: 1 !important; }
 def render_table(df: pd.DataFrame) -> None:
     """Bloomberg-styled static HTML table — no menus, no dropdowns."""
     th_style = (
-        "background:#1C2128;color:#78909C;padding:8px 14px;"
-        "text-align:left;border-bottom:1px solid #263238;"
+        "background:#1C2128;color:#E0E4EA;padding:9px 14px;"
+        "text-align:left;border-bottom:2px solid #263238;"
         f"font-family:{_FONT};font-size:0.82rem;font-weight:600;letter-spacing:0.04em;"
     )
     idx_style = (
-        "background:#111519;color:#546E7A;padding:8px 14px;"
-        "border-bottom:1px solid #181D24;"
-        f"font-family:{_FONT};font-size:0.82rem;font-weight:500;"
+        "background:#111519;color:#E0E4EA;padding:8px 14px;"
+        "border-bottom:1px solid #1C2128;"
+        f"font-family:{_FONT};font-size:0.82rem;font-weight:600;"
     )
     td_style = (
-        "background:#111519;color:#E0E4EA;padding:8px 14px;"
-        "border-bottom:1px solid #181D24;"
+        "background:#111519;color:#FF8C00;padding:8px 14px;"
+        "border-bottom:1px solid #1C2128;"
         f"font-family:{_FONT};font-size:0.82rem;"
     )
     header = "".join(f'<th style="{th_style}">{c}</th>' for c in df.columns)
     rows   = "".join(
         f'<tr><td style="{idx_style}">{idx}</td>'
-        + "".join(f'<td style="{td_style}">{v}</td>' for v in row)
+        + "".join(f'<td style="{td_style}">{str(v).replace("—", "-")}</td>' for v in row)
         + "</tr>"
         for idx, row in df.iterrows()
     )
