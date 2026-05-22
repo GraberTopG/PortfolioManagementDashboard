@@ -8,10 +8,25 @@ The analytical framework draws on two sources:
 
 ---
 
+## Tab structure
+
+Each tab is anchored to a core portfolio question:
+
+| # | Question | Tab |
+|---|----------|-----|
+| 1 | *What do I own and how has it performed?* | **Overview** |
+| 2 | *What are the risks of what I hold?* | **Risk** |
+| 3 | *How do my holdings move relative to each other?* | **Correlation** |
+| 4 | *How should I construct or improve the portfolio?* | **Optimisation** |
+| 5 | *What's the price action on individual names?* | **Technicals** |
+
+---
+
 ## Features
 
 ### Overview
 - Portfolio allocation donut chart with position-level weights
+- GICS sector allocation donut chart
 - Concentration metrics: HHI, effective number of positions, largest holding
 - Sector exposure vs S&P 500 with active weights
 - Individual stock cumulative returns with portfolio overlay
@@ -19,19 +34,25 @@ The analytical framework draws on two sources:
 - Performance metrics table: Ann. Return, Volatility, Sharpe, Sortino, Calmar, Max Drawdown, Beta, Alpha, Tracking Error, Information Ratio, Active Share, VaR, CVaR, Skewness, Kurtosis
 - CSV export
 
-### Technical Analysis
-- Candlestick chart with MA 20/50 and Bollinger Bands
-- RSI (14) and MACD (12/26/9) with volume
+### Risk
+- Portfolio-level VaR (historical and parametric), CVaR, Max Drawdown
+- Return distribution with normal fit overlay
+- Drawdown chart
+- Rolling VaR
+- Individual stock drill-down (adjustable confidence level)
+- GBM Monte Carlo simulation with percentile fan chart (zero-drift)
+- Terminal value distribution (portfolio and single stock)
+- P(loss > 15%) replacing misleading P(value > today)
 
 ### Correlation
 - Pairwise return heatmap (burgundy - grey - orange scale)
 - Rolling pairwise correlation (adjustable window)
 - Daily return scatter with OLS trendline
 
-### Portfolio Optimisation
+### Optimisation
 - Portfolio styles backtested performance (monthly rebalancing)
 - Style performance metrics table with CSV export
-- Efficient frontier (Monte Carlo simulation) with Capital Market Line
+- Efficient frontier with Capital Market Line
 - Optimal portfolio allocations table with CSV export
 - Strategy methodology with formulas
 
@@ -41,17 +62,11 @@ The analytical framework draws on two sources:
 - Minimum Variance
 - Mean-Variance (Maximum Sharpe / Tangency Portfolio)
 - Risk Parity (Inverse Volatility)
-- Market Weight (market-cap weighted)
+- Market Weight (buy-and-hold, market-cap weighted)
 
-### Risk Metrics
-- Portfolio-level VaR (historical and parametric), CVaR, Max Drawdown
-- Return distribution with normal fit overlay
-- Drawdown chart
-- Rolling VaR
-- Individual stock drill-down (adjustable confidence level)
-- GBM Monte Carlo simulation with percentile fan chart (zero-drift)
-- Terminal value distribution (portfolio and single stock)
-- P(loss > 15%) replacing misleading P(value > today)
+### Technicals
+- Candlestick chart with MA 20/50 and Bollinger Bands
+- RSI (14) and MACD (12/26/9) with volume
 
 ---
 

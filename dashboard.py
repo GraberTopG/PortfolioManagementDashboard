@@ -1246,6 +1246,7 @@ tab_overview, tab_risk, tab_corr, tab_port, tab_tech = st.tabs([
 # TAB 1 · OVERVIEW
 # ─────────────────────────────────────────────────────────────────────────────
 with tab_overview:
+    st.caption("*What do I own and how has it performed?*")
     # ── Portfolio allocation pie + concentration cards ────────────────────────
     st.subheader("Portfolio Allocation")
     _pie_colors = [
@@ -1428,6 +1429,7 @@ Higher HHI means more concentration; Effective N is the equivalent number of equ
 # TAB 2 · TECHNICAL ANALYSIS
 # ─────────────────────────────────────────────────────────────────────────────
 with tab_tech:
+    st.caption("*What's the price action on individual names?*")
     st.subheader("Technical Analysis")
     primary = st.selectbox("Select ticker", avail, key="ta_ticker")
     ohlcv = _yf_ohlcv(primary, str(start_dt), str(end_dt))
@@ -1457,6 +1459,7 @@ $$\text{RSI} = 100 - \frac{100}{1 + \bar{G}_{14}/\bar{L}_{14}}$$
 # TAB 3 · CORRELATION
 # ─────────────────────────────────────────────────────────────────────────────
 with tab_corr:
+    st.caption("*How do my holdings move relative to each other?*")
     st.subheader("Correlation Analysis")
     st.plotly_chart(chart_corr_heatmap(prices), use_container_width=True)
 
@@ -1505,6 +1508,7 @@ High correlation between two holdings reduces diversification benefit. Correlati
 # TAB 4 · PORTFOLIO OPTIMISATION
 # ─────────────────────────────────────────────────────────────────────────────
 with tab_port:
+    st.caption("*How should I construct or improve the portfolio?*")
     if n_assets < 2:
         st.info("Select at least 2 tickers.")
     else:
@@ -1619,6 +1623,7 @@ Data starts from **{_common_start.strftime('%d %b %Y')}** (earliest common date 
 # TAB 5 · RISK METRICS
 # ─────────────────────────────────────────────────────────────────────────────
 with tab_risk:
+    st.caption("*What are the risks of what I hold?*")
     confidence = st.slider(
         "VaR confidence level", 0.90, 0.99,
         st.session_state.get("var_conf", 0.95), 0.01,
