@@ -999,16 +999,14 @@ with st.sidebar:
     api_key = st.text_input("API key", placeholder="e.g. ABCDE12345")
     load_btn = st.button("Load Data", type="primary", use_container_width=True)
     st.divider()
-    st.markdown("**Select Portfolio Tickers** (max 15)")
+    st.markdown("**Select Portfolio Tickers** (max 10)")
     tickers = st.multiselect(
         "Choose up to 10 stocks / ETFs",
         options=ALL_TICKERS,
         default=DEFAULT_TICKERS,
+        max_selections=10,
         format_func=lambda t: f"{t} ({COMPANY_NAMES.get(t, '')})",
     )
-    if len(tickers) > 15:
-        st.warning("Maximum 15 tickers — only the first 15 will be used.")
-        tickers = tickers[:15]
     if not tickers:
         tickers = DEFAULT_TICKERS
 
