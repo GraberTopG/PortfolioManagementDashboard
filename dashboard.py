@@ -78,7 +78,17 @@ UNIVERSE = {
         "NEE","DUK","SO","AEP","D","EXC","PCG","XEL","ES","AWK",
     ],
 }
-ALL_TICKERS = [t for group in UNIVERSE.values() for t in group]
+ALL_TICKERS   = [t for group in UNIVERSE.values() for t in group]
+TICKER_SECTOR = {t: sec for sec, tickers in UNIVERSE.items() for t in tickers}
+
+# Approximate S&P 500 GICS sector weights (as of 2025)
+SPY_SECTOR_WEIGHTS = {
+    "Technology": 0.310, "Financials": 0.134, "Healthcare": 0.118,
+    "Consumer Discretionary": 0.104, "Communication": 0.090,
+    "Industrials": 0.088, "Consumer Staples": 0.058, "Energy": 0.038,
+    "Utilities": 0.024, "Real Estate": 0.022, "Materials": 0.022,
+}
+
 CHART_TEMPLATE = "plotly_dark"
 # Bloomberg Terminal colour palette
 ACCENT = "#FF8C00"   # Bloomberg orange  (primary highlight)
@@ -266,23 +276,47 @@ def win_rate(r: pd.Series) -> float:
     return (r > 0).mean()
 
 def full_metrics(r: pd.Series, prices: pd.Series, bench_r: pd.Series,
-                 conf: float = 0.95) -> dict:
-    b, a = beta_alpha(r, bench_r)
+                 conf: float = 0.95, port_w: np.ndarray | None = None,
+                 bench_w: np.ndarray | None = None) -> dict:
+    b, a  = beta_alpha(r, bench_r)
+    te    = tracking_error(r, bench_r)
+    ir    = information_ratio(r, bench_r)
+    ash   = active_share(port_w, bench_w) if port_w is not None and bench_w is not None else np.nan
     return {
-        "Ann. Return":    f"{ann_return(r):.2%}",
-        "Ann. Volatility":f"{ann_vol(r):.2%}",
-        "Sharpe Ratio":   f"{sharpe(r):.2f}",
-        "Sortino Ratio":  f"{sortino(r):.2f}",
-        "Calmar Ratio":   f"{calmar(r, prices):.2f}",
-        "Max Drawdown":   f"{max_dd(prices):.2%}",
-        "Beta (vs SPY)":  f"{b:.2f}",
-        "Alpha (vs SPY)": f"{a:.2%}",
-        "Win Rate":       f"{win_rate(r):.1%}",
-        f"VaR {conf:.0%}":  f"{hist_var(r, conf):.2%}",
-        f"CVaR {conf:.0%}": f"{cvar(r, conf):.2%}",
-        "Skewness":       f"{r.skew():.2f}",
-        "Kurtosis":       f"{r.kurtosis():.2f}",
+        "Ann. Return":       f"{ann_return(r):.2%}",
+        "Ann. Volatility":   f"{ann_vol(r):.2%}",
+        "Sharpe Ratio":      f"{sharpe(r):.2f}",
+        "Sortino Ratio":     f"{sortino(r):.2f}",
+        "Calmar Ratio":      f"{calmar(r, prices):.2f}",
+        "Max Drawdown":      f"{max_dd(prices):.2%}",
+        "Beta (vs SPY)":     f"{b:.2f}",
+        "Alpha (vs SPY)":    f"{a:.2%}",
+        "Tracking Error":    f"{te:.2%}",
+        "Information Ratio": f"{ir:.2f}",
+        "Active Share":      f"{ash:.1%}" if not np.isnan(ash) else "-",
+        "Win Rate":          f"{win_rate(r):.1%}",
+        f"VaR {conf:.0%}":   f"{hist_var(r, conf):.2%}",
+        f"CVaR {conf:.0%}":  f"{cvar(r, conf):.2%}",
+        "Skewness":          f"{r.skew():.2f}",
+        "Kurtosis":          f"{r.kurtosis():.2f}",
     }
+
+def tracking_error(r: pd.Series, bench_r: pd.Series) -> float:
+    active = r.subtract(bench_r, fill_value=0)
+    return active.std() * np.sqrt(AF)
+
+def information_ratio(r: pd.Series, bench_r: pd.Series) -> float:
+    active = r.subtract(bench_r, fill_value=0)
+    te = tracking_error(r, bench_r)
+    return ann_return(active) / te if te else np.nan
+
+def active_share(port_w: np.ndarray, bench_w: np.ndarray) -> float:
+    """Active share vs a benchmark weight vector (same asset universe)."""
+    return 0.5 * np.sum(np.abs(port_w - bench_w))
+
+def hhi(weights: np.ndarray) -> float:
+    """Herfindahl-Hirschman Index — sum of squared weights."""
+    return float(np.sum(np.array(weights) ** 2))
 
 def rolling_vol(r: pd.Series, w: int = 21) -> pd.Series:
     return r.rolling(w, min_periods=5).std() * np.sqrt(AF)
@@ -469,6 +503,34 @@ def chart_cumret(series_dict: dict, title="Cumulative Returns (rebased to 0%)") 
                                  name=name, line=dict(color=colors[i % len(colors)], width=2),
                                  hovertemplate="%{y:.2f}%<extra>" + name + "</extra>"))
     return _layout(fig, title, yaxis_title="Return (%)")
+
+
+def chart_sector_exposure(tickers: list, weights: np.ndarray) -> go.Figure:
+    """Grouped bar: portfolio sector weights vs approximate S&P 500 sector weights."""
+    sec_w: dict[str, float] = {}
+    for t, w in zip(tickers, weights):
+        s = TICKER_SECTOR.get(t, "Other")
+        sec_w[s] = sec_w.get(s, 0.0) + w
+
+    sectors = sorted(sec_w.keys(), key=lambda s: -sec_w[s])
+    port_pct = [sec_w.get(s, 0) * 100 for s in sectors]
+    spy_pct  = [SPY_SECTOR_WEIGHTS.get(s, 0) * 100 for s in sectors]
+    active   = [p - b for p, b in zip(port_pct, spy_pct)]
+
+    fig = go.Figure()
+    fig.add_trace(go.Bar(name="Your Portfolio", x=sectors, y=port_pct,
+                         marker_color=ACCENT, opacity=0.9))
+    fig.add_trace(go.Bar(name="S&P 500 (SPY)", x=sectors, y=spy_pct,
+                         marker_color=MUTED, opacity=0.7))
+    fig.add_trace(go.Scatter(name="Active Weight", x=sectors, y=active,
+                             mode="markers",
+                             marker=dict(color=[GREEN if v >= 0 else RED
+                                                for v in active], size=9,
+                                         symbol="diamond"),
+                             hovertemplate="%{y:+.1f}%<extra>Active</extra>"))
+    fig.update_layout(barmode="group")
+    return _layout(fig, "Sector Exposure vs S&P 500",
+                   yaxis_title="Weight (%)", h=420)
 
 
 def chart_benchmark_comparison(port_r, bench_prices, label="Equal-Weight Portfolio") -> go.Figure:
@@ -1087,7 +1149,7 @@ tab_overview, tab_tech, tab_corr, tab_port, tab_risk, tab_mc = st.tabs([
 # TAB 1 · OVERVIEW
 # ─────────────────────────────────────────────────────────────────────────────
 with tab_overview:
-    # ── Portfolio allocation pie chart ────────────────────────────────────────
+    # ── Portfolio allocation pie + concentration cards ────────────────────────
     st.subheader("Portfolio Allocation")
     _pie_colors = [
         ACCENT, BLUE, GOLD, GREEN, RED, MUTED,
@@ -1122,6 +1184,21 @@ with tab_overview:
     )
     st.plotly_chart(fig_pie, use_container_width=True)
 
+    # ── Concentration metrics ─────────────────────────────────────────────────
+    _hhi = hhi(user_w)
+    _eff_n = 1 / _hhi if _hhi > 0 else n_assets
+    _max_w = float(np.max(user_w))
+    c1, c2, c3 = st.columns(3)
+    with c1: mcard("HHI (concentration)", f"{_hhi:.3f}")
+    with c2: mcard("Effective positions", f"{_eff_n:.1f}")
+    with c3: mcard("Largest position", f"{_max_w:.1%}")
+
+    st.divider()
+
+    # ── Sector exposure ───────────────────────────────────────────────────────
+    st.subheader("Sector Exposure vs S&P 500")
+    st.plotly_chart(chart_sector_exposure(avail, user_w), use_container_width=True)
+
     st.divider()
 
     # ── Individual stock cumulative returns + portfolio overlay ───────────────
@@ -1149,17 +1226,22 @@ with tab_overview:
 
     # ── Metrics table (bottom) ────────────────────────────────────────────────
     st.subheader("Portfolio Performance vs S&P 500")
-    port_metrics = full_metrics(port_r, port_val, spy_r, confidence)
+    # Market-cap weights used as benchmark proxy for active share calculation
+    _mcw_bench = w_market_cap(",".join(avail))
+    port_metrics = full_metrics(port_r, port_val, spy_r, confidence,
+                                port_w=user_w, bench_w=_mcw_bench)
     spy_metrics  = full_metrics(spy_r, (1+spy_r).cumprod(), spy_r, confidence) if not spy_r.empty else {}
 
     rows = list(port_metrics.keys())
     table_data = {"Metric": rows,
                   "Your Portfolio": [port_metrics[k] for k in rows]}
     if spy_metrics:
-        table_data["S&P 500 (SPY)"] = [spy_metrics.get(k, "—") for k in rows]
+        table_data["S&P 500 (SPY)"] = [spy_metrics.get(k, "-") for k in rows]
 
     df_table = pd.DataFrame(table_data).set_index("Metric")
     render_table(df_table)
+    st.download_button("Download as CSV", df_table.to_csv(),
+                       file_name="portfolio_metrics.csv", mime="text/csv")
 
 # ─────────────────────────────────────────────────────────────────────────────
 # TAB 2 · TECHNICAL ANALYSIS
@@ -1255,7 +1337,10 @@ with tab_port:
                 "Alpha":          f"{a:.2%}",
                 f"VaR {confidence:.0%}": f"{hist_var(s_ret, confidence):.2%}",
             })
-        render_table(pd.DataFrame(rows_s).set_index("Style"))
+        _df_styles = pd.DataFrame(rows_s).set_index("Style")
+        render_table(_df_styles)
+        st.download_button("Download as CSV", _df_styles.to_csv(),
+                           file_name="style_performance.csv", mime="text/csv")
 
         st.divider()
 
@@ -1283,6 +1368,8 @@ with tab_port:
                         **{k: v for k, v in wts_dict.items() if k != "Your Portfolio"}}
         wts_df = pd.DataFrame(wts_dict, index=avail).map(lambda x: f"{x:.1%}")
         render_table(wts_df)
+        st.download_button("Download as CSV", wts_df.to_csv(),
+                           file_name="portfolio_allocations.csv", mime="text/csv")
 
         st.divider()
 
@@ -1447,8 +1534,8 @@ with tab_mc:
     with c2: mcard("10th pct (bear)",        f"{np.percentile(term_port,10):.3f}", False)
     with c3: mcard("90th pct (bull)",        f"{np.percentile(term_port,90):.3f}", True)
     with c4:
-        p_up = (term_port > float(port_val.iloc[-1])).mean()
-        mcard("P(value > today)", f"{p_up:.1%}", p_up > 0.5)
+        p_loss15 = (term_port < float(port_val.iloc[-1]) * 0.85).mean()
+        mcard("P(loss > 15%)", f"{p_loss15:.1%}", False)
 
     fig_th = go.Figure()
     fig_th.add_trace(go.Histogram(x=term_port, nbinsx=60,
@@ -1477,8 +1564,8 @@ with tab_mc:
     with c2: mcard("10th pct (bear)",       f"${np.percentile(term_s,10):,.2f}", False)
     with c3: mcard("90th pct (bull)",       f"${np.percentile(term_s,90):,.2f}", True)
     with c4:
-        p_up_s = (term_s > last_px).mean()
-        mcard("P(price > today)", f"{p_up_s:.1%}", p_up_s > 0.5)
+        p_loss15_s = (term_s < last_px * 0.85).mean()
+        mcard("P(loss > 15%)", f"{p_loss15_s:.1%}", False)
 
     fig_th2 = go.Figure()
     fig_th2.add_trace(go.Histogram(x=term_s, nbinsx=60,
@@ -1506,5 +1593,5 @@ where $\hat{\sigma}$ is the annualised daily volatility estimated from the histo
 - **Constant volatility.** $\hat{\sigma}$ is fixed throughout the simulation. In practice, volatility clusters and spikes during crises (GARCH effects), so tail events may be underestimated.
 - **Log-normal prices.** GBM assumes continuously compounded returns are normally distributed. Real returns exhibit fat tails and negative skew, meaning extreme losses occur more frequently than the model suggests.
 - **Independent increments.** Each daily shock is drawn independently. Serial correlation, momentum, and mean-reversion in actual prices are not captured.
-- **P(value > today)** counts the share of simulated paths whose terminal value exceeds the starting value. Even with zero drift, GBM produces a slight positive skew (prices are bounded below at zero but unbounded above), so this probability will generally exceed 50% — particularly over longer horizons.
+- **P(loss > 15%)** counts the share of simulated paths whose terminal value falls more than 15% below today's value. This is a direct answer to the question a risk committee asks: what is the probability of a material loss over the horizon? Unlike P(value > today), it is not biased by log-normal skew and gives an immediately actionable risk signal.
 """)
