@@ -979,7 +979,7 @@ with tab_port:
             "Mean-Variance": w_max_sharpe(mu, cov),   # tangency portfolio = Max Sharpe
             "Risk Parity":   w_inv_vol(rets_df),       # inverse-volatility weighting
         }
-        wts_df = pd.DataFrame(wts_dict, index=avail).applymap(lambda x: f"{x:.1%}")
+        wts_df = pd.DataFrame(wts_dict, index=avail).map(lambda x: f"{x:.1%}")
         st.dataframe(wts_df, use_container_width=True)
 
         st.divider()
