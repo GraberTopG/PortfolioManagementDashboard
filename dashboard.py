@@ -836,31 +836,30 @@ h2, h3 {
 /* ── KPI metric cards — Bloomberg terminal style ─────────────────────────── */
 .mcard {
     background: #111519;
-    border-radius: 2px;
-    padding: 16px 20px;
-    border: 1px solid #1C2128;
-    border-left: 3px solid #FF8C00;
-    margin-bottom: 8px;
+    border-top: 1px solid #263238;
+    border-bottom: 1px solid #263238;
+    padding: 14px 18px;
+    margin-bottom: 0px;
 }
 .mlabel {
     font-family: 'IBM Plex Serif', Georgia, serif !important;
     font-size: 0.62rem;
     color: #546E7A;
     text-transform: uppercase;
-    letter-spacing: 0.14em;
+    letter-spacing: 0.12em;
     font-weight: 500;
+    margin-bottom: 6px;
 }
 .mvalue {
     font-family: 'IBM Plex Serif', Georgia, serif !important;
-    font-size: 1.45rem;
-    font-weight: 600;
+    font-size: 1.35rem;
+    font-weight: 400;
     color: #E0E4EA;
-    margin-top: 6px;
     font-variant-numeric: tabular-nums;
-    letter-spacing: 0.02em;
+    letter-spacing: 0.01em;
 }
 .mpos { color: #00C853 !important; }
-.mneg { color: #E53935 !important; }
+.mneg { color: #78909C !important; }
 
 /* ── Sidebar ─────────────────────────────────────────────────────────────── */
 [data-testid="stSidebar"] {
@@ -955,11 +954,9 @@ def render_table(df: pd.DataFrame) -> None:
 
 
 def mcard(label, value, pos=None):
-    cls   = "mpos" if pos is True else ("mneg" if pos is False else "")
-    # accent border colour: green for positive, red for negative, blue for neutral
-    border = "#00C853" if pos is True else ("#E53935" if pos is False else "#FF8C00")
+    cls = "mpos" if pos is True else ("mneg" if pos is False else "")
     st.markdown(
-        f'<div class="mcard" style="border-left-color:{border}">'
+        f'<div class="mcard">'
         f'<div class="mlabel">{label}</div>'
         f'<div class="mvalue {cls}">{value}</div></div>',
         unsafe_allow_html=True,
