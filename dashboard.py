@@ -1365,8 +1365,8 @@ with tab_risk:
     st.plotly_chart(chart_rolling_var(r_t, risk_t, var_win, confidence),
                     use_container_width=True)
 
-    with st.expander("Risk metric definitions"):
-        st.markdown(f"""
+    st.subheader("Risk Metric Definitions")
+    st.markdown(f"""
 | Metric | Definition |
 |--------|-----------|
 | **Historical VaR** | Loss not exceeded on {confidence:.0%} of days, read directly from the return distribution |
