@@ -744,7 +744,7 @@ def chart_corr_heatmap(prices: pd.DataFrame) -> go.Figure:
 #  STREAMLIT APP
 # ══════════════════════════════════════════════════════════════════════════════
 
-st.set_page_config(page_title="Quant Finance Dashboard", page_icon="📈",
+st.set_page_config(page_title="Portfolio Management Dashboard", page_icon="📊",
                    layout="wide", initial_sidebar_state="expanded")
 
 st.markdown("""
@@ -766,7 +766,7 @@ def mcard(label, value, pos=None):
 
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 with st.sidebar:
-    st.title("Quant Dashboard")
+    st.title("Portfolio Management Dashboard")
     st.caption("HSG Master · Programming Project")
     st.divider()
     st.markdown("**Alpha Vantage API Key**")
@@ -844,7 +844,7 @@ port_val  = (1 + port_r).cumprod()                 # portfolio value index (star
 spy_r     = bench_prices["SPY"].pct_change().dropna() if "SPY" in bench_prices.columns else pd.Series(dtype=float)
 
 # ── Header ────────────────────────────────────────────────────────────────────
-st.title("Quantitative Finance Dashboard")
+st.title("Portfolio Management Dashboard")
 st.caption(f"Universe: {', '.join(avail)}  ·  Period: {start_dt} → {end_dt}  ·  "
            f"{len(prices)} trading days")
 st.divider()

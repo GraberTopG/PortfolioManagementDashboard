@@ -1,6 +1,6 @@
-# Quantitative Finance Dashboard
+# Portfolio Management Dashboard
 
-An interactive quantitative-finance dashboard built with **Streamlit** and **Plotly** as part of a Python programming course project at the **University of St. Gallen (HSG)**.
+An interactive portfolio management dashboard built with **Streamlit** and **Plotly** as part of a Python programming course project at the **University of St. Gallen (HSG)**.
 
 The analytics concepts (rolling statistics, portfolio optimisation, risk measures, Monte Carlo simulation) are inspired by the **GS Quant** open-source library from Goldman Sachs.
 
