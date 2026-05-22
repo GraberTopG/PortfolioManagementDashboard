@@ -2,7 +2,9 @@
 
 An interactive portfolio management dashboard built with **Streamlit** and **Plotly** as part of a Python programming course project at the **University of St. Gallen (HSG)**.
 
-The analytics concepts (rolling statistics, portfolio optimisation, risk measures, Monte Carlo simulation) are inspired by the **GS Quant** open-source library from Goldman Sachs.
+The analytical framework draws on two sources:
+- Implementation concepts and library design from the **GS Quant** open-source library by Goldman Sachs (rolling statistics, efficient frontier, VaR, Monte Carlo GBM)
+- Theoretical foundations from the HSG course **Asset Allocation and Investment Strategy** (Markowitz mean-variance optimisation, risk parity, factor-based portfolio construction, drawdown analysis)
 
 ---
 

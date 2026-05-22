@@ -1087,6 +1087,43 @@ tab_overview, tab_tech, tab_corr, tab_port, tab_risk, tab_mc = st.tabs([
 # TAB 1 · OVERVIEW
 # ─────────────────────────────────────────────────────────────────────────────
 with tab_overview:
+    # ── Portfolio allocation pie chart ────────────────────────────────────────
+    st.subheader("Portfolio Allocation")
+    _pie_colors = [
+        ACCENT, BLUE, GOLD, GREEN, RED, MUTED,
+        "#8B5CF6", "#14B8A6", "#F97316", "#94A3B8",
+    ]
+    fig_pie = go.Figure(go.Pie(
+        labels=[f"{t} ({COMPANY_NAMES.get(t, t)})" for t in avail],
+        values=[round(w * 100, 2) for w in user_w],
+        hole=0.38,
+        marker=dict(
+            colors=_pie_colors[:len(avail)],
+            line=dict(color=_BG, width=2),
+        ),
+        texttemplate="%{label}<br><b>%{percent}</b>",
+        textfont=dict(family=_FONT, size=12, color="#E0E4EA"),
+        hovertemplate="<b>%{label}</b><br>Weight: %{value:.1f}%<extra></extra>",
+        insidetextorientation="radial",
+    ))
+    fig_pie.update_layout(
+        template=CHART_TEMPLATE,
+        paper_bgcolor=_BG,
+        plot_bgcolor=_PLOT,
+        font=dict(family=_FONT, color="#78909C"),
+        height=460,
+        showlegend=False,
+        margin=dict(t=30, b=20, l=20, r=20),
+        annotations=[dict(
+            text=port_label.replace(" Portfolio", ""),
+            x=0.5, y=0.5, font=dict(size=13, color="#E0E4EA", family=_FONT),
+            showarrow=False,
+        )],
+    )
+    st.plotly_chart(fig_pie, use_container_width=True)
+
+    st.divider()
+
     # ── Individual stock cumulative returns + portfolio overlay ───────────────
     st.subheader("Individual Stock Cumulative Returns")
     fig_cr = chart_cumret({t: prices[t] for t in avail})
