@@ -402,49 +402,69 @@ def efficient_frontier_mc(mu, cov, n=500):
         vols.append(v); rets.append(r); srs.append(s); wts.append(w)
     return np.array(vols), np.array(rets), np.array(srs), wts
 
-# ── Portfolio backtest with monthly rebalancing ───────────────────────────────
-def backtest_styles(prices: pd.DataFrame, min_lookback: int = 5) -> dict[str, pd.Series]:
+# ── Portfolio backtest ────────────────────────────────────────────────────────
+def backtest_styles(prices: pd.DataFrame, min_lookback: int = 63) -> dict[str, pd.Series]:
+    """
+    Walk-forward backtest with monthly rebalancing for EW, Min Variance,
+    Mean-Variance and Risk Parity (inverse-vol). Market Weight is handled
+    separately as a true buy-and-hold (no rebalancing) starting from day 1.
+
+    min_lookback (default 63 ≈ 3 months): minimum number of daily returns
+    required before the optimiser is trusted. Below this threshold all
+    optimised strategies fall back to equal weight.
+    """
     rets = prices.pct_change().dropna()
     month_starts = rets.resample("MS").first().index.tolist()
-    # append end of series
-    rebal_dates = [d for d in month_starts if d in rets.index or d > rets.index[0]]
+    rebal_dates  = [d for d in month_starts if d in rets.index or d > rets.index[0]]
 
-    style_names = ["Equal Weight", "Min Variance", "Mean-Variance", "Risk Parity", "Market Weight"]
-    port_rets = {s: pd.Series(dtype=float) for s in style_names}
+    # Only the four actively managed styles use monthly rebalancing
+    style_names = ["Equal Weight", "Min Variance", "Mean-Variance", "Risk Parity"]
+    port_rets   = {s: pd.Series(dtype=float) for s in style_names}
 
     for i, rebal in enumerate(rebal_dates):
-        # holding period: from this rebal to the next (or end)
         hold_end = rebal_dates[i + 1] if i + 1 < len(rebal_dates) else rets.index[-1]
-        period = rets.loc[rebal:hold_end].iloc[1:]   # skip first row (same-day rebal)
+        period   = rets.loc[rebal:hold_end].iloc[1:]   # skip same-day row
         if period.empty:
             continue
 
+        # Expanding-window history: only past data, no look-ahead
         hist = rets.loc[:rebal]
-        mu = hist.mean()
-        cov = hist.cov()
-        n = len(rets.columns)
+        mu   = hist.mean()
+        cov  = hist.cov()
+        n    = len(rets.columns)
 
-        # NOTE: w_market_cap() uses current (today's) market caps at every
-        # rebalancing date — a known look-ahead approximation, since historical
-        # share counts are not available from yfinance. The Market Weight line
-        # reflects the current cap structure applied backward, not true
-        # historical cap-weighted performance.
-        mcw = w_market_cap(",".join(rets.columns.tolist()))
         if len(hist) >= min_lookback:
             weights = {
                 "Equal Weight":  w_equal(n),
+                # Min Variance: objective uses only cov, mu is ignored
                 "Min Variance":  w_min_var(mu, cov),
-                "Mean-Variance": w_max_sharpe(mu, cov),   # tangency portfolio
-                "Risk Parity":   w_inv_vol(hist),          # inverse-volatility weighting
-                "Market Weight": mcw,
+                # Mean-Variance: uses hist.mean() as expected returns —
+                # no look-ahead, but sample means are noisy estimators
+                "Mean-Variance": w_max_sharpe(mu, cov),
+                # Inverse-vol weighting (simplified Risk Parity):
+                # vol estimated from expanding window; improves as data accumulates
+                "Risk Parity":   w_inv_vol(hist),
             }
         else:
+            # Too few observations — fall back to equal weight
             ew = w_equal(n)
-            weights = {s: ew for s in style_names[:-1]} | {"Market Weight": mcw}
+            weights = {s: ew for s in style_names}
 
         for s in style_names:
             p_ret = (period * weights[s]).sum(axis=1)
             port_rets[s] = pd.concat([port_rets[s], p_ret])
+
+    # ── Market Weight: true buy-and-hold, no rebalancing ─────────────────────
+    # A MCW portfolio never needs rebalancing: holding each stock proportional
+    # to its market cap at t=0 means price appreciation automatically keeps
+    # the portfolio at MCW proportions (this is why passive index funds are
+    # low-turnover).
+    # Initial weights use current market caps — a look-ahead approximation
+    # since historical caps are unavailable from yfinance, but the portfolio
+    # structure itself is correct (no monthly rebalancing).
+    mcw_w0  = w_market_cap(",".join(rets.columns.tolist()))
+    mcw_val = (mcw_w0 * (1 + rets).cumprod()).sum(axis=1)
+    port_rets["Market Weight"] = mcw_val.pct_change().dropna()
 
     return port_rets
 
@@ -1577,113 +1597,130 @@ with tab_port:
         # ── Strategy methodology ──────────────────────────────────────────────
         st.subheader("Methodology")
         st.markdown(f"""
-All optimisations are solved subject to **full investment** (weights sum to 1)
-and **long-only** constraints (no short selling). $N$ denotes the number of
-assets, $\\Sigma$ the covariance matrix of returns, and $\\mu$ the vector of
-mean returns.
+All optimisations are solved subject to **full investment** (weights sum to 1),
+**long-only** constraints (no short selling), and a **40% single-stock cap**
+(SLSQP). $N$ denotes the number of assets, $\\Sigma$ the covariance matrix,
+and $\\mu$ the vector of mean returns. $r_f = 5.25\\%$ is the risk-free rate.
 
-**Common data period.** Every calculation — backtest, covariance matrix,
-return statistics — requires all selected tickers to have a price simultaneously.
-The data window therefore starts from **{_common_start.strftime('%d %b %Y')}**,
-the earliest date on which every ticker in your selection has a valid price.
-If a ticker was listed later than the others (e.g. a recent IPO), it shifts
-the entire common start date forward. To access a longer history, remove
-short-history tickers from the selection.
+**Common data period.** Every calculation requires all tickers to have a price
+simultaneously. The window therefore starts from **{_common_start.strftime('%d %b %Y')}**
+— the earliest date on which every selected ticker has data. Remove
+short-history tickers to extend the history.
 """)
 
         st.markdown("**1. Equal Weight (1/N)**")
-        st.markdown("*Invest an equal proportion in every asset.*")
+        st.markdown("*Invest an equal proportion in every asset; rebalance monthly.*")
         st.latex(r"w_i = \frac{1}{N} \qquad \forall\; i = 1, \ldots, N")
         st.markdown("""
 No estimation of expected returns or covariances is required. Research
 (DeMiguel et al., 2009) shows it is surprisingly hard to beat out-of-sample —
-it benefits from maximum diversification and has zero estimation error.
+it benefits from maximum diversification and zero estimation error.
+
+**Rebalancing.** Stocks drift from their equal weights as prices move. Monthly
+rebalancing sells winners and buys laggards to restore 1/N. This is required
+to maintain the strategy — without it the portfolio would gradually become
+a momentum-tilted, concentration-increasing portfolio.
+
+**No look-ahead bias.** Weights are fixed at 1/N regardless of any data, so no
+historical information is used and there is no estimation error.
 """)
 
         st.markdown("**2. Minimum Variance**")
-        st.markdown("*Minimise portfolio volatility regardless of expected returns.*")
+        st.markdown("*Minimise portfolio volatility; rebalance monthly; walk-forward.*")
         st.latex(r"""
 \min_{w} \;\; w^\top \Sigma\, w \qquad
-\text{subject to} \;\; \mathbf{1}^\top w = 1,\;\; w_i \ge 0
+\text{subject to} \;\; \mathbf{1}^\top w = 1,\;\; 0 \le w_i \le 0.40
 """)
         st.markdown("""
 The solution concentrates in low-volatility, low-correlation assets. It is the
 leftmost point on the efficient frontier and requires only the covariance matrix
-— no return forecasts needed.
+— no return forecasts are needed (expected returns are not used in the
+objective).
+
+**Walk-forward / no look-ahead.** At each monthly rebalancing date, $\\Sigma$
+is estimated from an **expanding window** of daily returns up to (but not
+including) that date. No future data is ever used.
+
+**Covariance stability.** The estimate improves as the history grows. For the
+first 63 trading days (~3 months) the optimiser falls back to Equal Weight
+while there is insufficient data for a reliable covariance matrix. Zero-weight
+allocations are mathematically normal: stocks that do not improve the objective
+are correctly excluded.
 """)
 
         st.markdown("**3. Mean-Variance (Tangency Portfolio)**")
-        st.markdown("*Find the portfolio with the best return per unit of risk.*")
+        st.markdown("*Maximise Sharpe ratio; rebalance monthly; walk-forward.*")
         st.markdown(r"""
-The general Mean-Variance framework (Markowitz, 1952) maximises expected
-portfolio return for a given level of variance:
-""")
-        st.latex(r"""
-\max_{w} \;\; \mathbb{E}[R_p] - \frac{k}{2}\,\mathrm{var}(R_p)
-\qquad \text{subject to} \;\; \mathbf{1}^\top w = 1,\;\; w_i \ge 0
-""")
-        st.markdown(r"""
-Different values of the risk-aversion parameter $k$ trace out the entire
-efficient frontier. The **tangency portfolio** is the specific point where the
-Capital Market Line touches the frontier — equivalently, it **maximises the
-Sharpe ratio**:
+The **tangency portfolio** maximises the Sharpe ratio — the point where the
+Capital Market Line touches the efficient frontier:
 """)
         st.latex(r"""
 \max_{w} \;\; \frac{w^\top \mu - r_f}{\sqrt{w^\top \Sigma\, w}}
-\qquad \text{subject to} \;\; \mathbf{1}^\top w = 1,\;\; w_i \ge 0
+\qquad \text{subject to} \;\; \mathbf{1}^\top w = 1,\;\; 0 \le w_i \le 0.40
 """)
         st.markdown(r"""
-$r_f = 5.25\%$ is the risk-free rate. This is the portfolio implemented here:
-**Mean-Variance optimisation solved as a Maximum Sharpe problem.**
+**Walk-forward / no look-ahead.** Both $\mu$ and $\Sigma$ are estimated from
+the expanding window up to each rebalancing date.
+
+**Known limitation — estimation error in expected returns.** $\mu$ is
+approximated by the sample mean of historical daily returns, which is an
+extremely noisy estimator (standard error $\approx \sigma/\sqrt{T}$). The
+optimiser treats these noisy estimates as if they were exact, so it
+concentrates heavily in whatever stock happened to have the highest sample
+mean — a phenomenon sometimes called the *error maximiser*. This is not
+look-ahead bias but an inherent weakness of classical MV optimisation. The
+40% single-stock cap limits the most extreme concentrations.
 """)
 
-        st.markdown("**4. Risk Parity**")
-        st.markdown("*Weight each asset inversely proportional to its volatility.*")
+        st.markdown("**4. Risk Parity (Inverse Volatility)**")
+        st.markdown("*Weight each asset inversely proportional to its volatility; rebalance monthly; walk-forward.*")
         st.latex(r"""
-w_i = \frac{1/\sigma_i}{\displaystyle\sum_{j=1}^{N} 1/\sigma_j}
+w_i = \frac{1/\hat{\sigma}_i}{\displaystyle\sum_{j=1}^{N} 1/\hat{\sigma}_j}
 """)
         st.markdown(r"""
-$\sigma_i$ is the annualised volatility of asset $i$. Assets with high
-volatility receive smaller weights; low-volatility assets receive larger
-weights. The goal is for every asset to contribute **equal risk** to the
-portfolio rather than equal capital. This rule requires no matrix inversion and
-no return forecasts.
+Assets with high volatility receive smaller weights so that every asset
+contributes roughly equal risk to the portfolio.
+
+**Implementation note.** This is *inverse-volatility weighting* — a simplified
+form of risk parity. True risk parity equalises each asset's marginal risk
+contribution, which requires the full covariance matrix. Inverse-vol weighting
+is equivalent to risk parity only when all pairwise correlations are equal.
+
+**Walk-forward / no look-ahead.** $\hat{\sigma}_i$ is the sample standard
+deviation of daily returns estimated from the expanding window up to each
+rebalancing date. No future data is used.
+
+**Volatility stability.** The estimate improves as more data accumulates:
+- After 1 month (~21 returns): standard error of $\hat{\sigma}$ is roughly
+  $\hat{\sigma}/\sqrt{2 \times 21} \approx \hat{\sigma}/6$ — noisy but usable.
+- After 1 year (~252 returns): standard error falls to $\hat{\sigma}/\sqrt{504}
+  \approx \hat{\sigma}/22$ — much more reliable.
+
+The 63-day minimum lookback ensures at least 3 months of data before
+inverse-vol weights replace equal weights.
 """)
 
-        st.markdown("**5. Market Weight Portfolio**")
-        st.markdown("*Hold every asset in proportion to its market capitalisation.*")
+        st.markdown("**5. Market Weight (Buy-and-Hold)**")
+        st.markdown("*Hold each stock proportional to its market cap at inception; never rebalance.*")
         st.latex(r"""
-w_i = \frac{\mathrm{Market\;cap}_i}{\displaystyle\sum_{j=1}^{N} \mathrm{Market\;cap}_j}
+w_i(0) = \frac{\mathrm{MCap}_i(0)}{\displaystyle\sum_{j=1}^{N} \mathrm{MCap}_j(0)},
+\qquad w_i(t) = \frac{w_i(0)\,(1+R_i^{0\to t})}{\displaystyle\sum_j w_j(0)\,(1+R_j^{0\to t})}
 """)
         st.markdown(r"""
-Larger companies receive larger weights, mirroring how broad index funds such
-as the S&P 500 are constructed. No optimisation is required — weights are
-determined entirely by the market's collective valuation. Current market caps
-are sourced from Yahoo Finance and held fixed across the backtest period.
+A market-cap weighted portfolio is **inherently buy-and-hold**. If you hold
+each stock proportional to its market cap at $t=0$, then as prices move, your
+portfolio value in each stock grows proportionally — so the weights
+automatically remain at market-cap proportions. No rebalancing is ever needed
+or appropriate. This is why passive index funds have very low turnover.
 
-> **Limitation — look-ahead approximation.** Historical per-share market caps
-> are not available from Yahoo Finance, so the backtest applies *today's*
-> cap weights to all historical rebalancing dates. This introduces a mild
-> look-ahead bias: stocks with large current market caps (e.g. NVDA) receive
-> a higher weight than they would have carried in 2013. Treat the Market Weight
-> backtest line as an approximation, not a true historical cap-weighted
-> simulation.
-""")
+The backtest computes this as a vectorised buy-and-hold:
+$$V(t) = \sum_i w_i(0) \cdot \prod_{s=1}^{t}(1+r_i^s)$$
 
-        st.divider()
-        st.markdown(r"""
-**General note on optimised weights**
-
-The Min Variance and Mean-Variance optimisers are constrained to a maximum of
-**40% in any single stock** (long-only, SLSQP). Without this cap, the solver
-routinely concentrates 50%+ into the single stock with the best in-sample
-risk-adjusted return — a textbook case of in-sample over-fitting that would
-perform very differently out-of-sample. The 40% cap is standard practice in
-institutional long-only mandates.
-
-Zero-weight allocations are mathematically normal: when a stock does not
-improve the objective function (minimum variance or maximum Sharpe), the
-solver correctly excludes it rather than forcing a small arbitrary allocation.
+**Look-ahead approximation.** Historical per-share market caps are unavailable
+from Yahoo Finance, so the initial weights $w_i(0)$ use *today's* market caps
+as a proxy. This overstates the weight of stocks that became large caps recently
+(e.g. NVDA). The portfolio structure (buy-and-hold, no rebalancing) is
+correct; only the starting weights carry this approximation.
 """)
 
 # ─────────────────────────────────────────────────────────────────────────────
