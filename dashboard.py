@@ -864,6 +864,12 @@ h2, h3 {
 .mpos { color: #FF8C00 !important; }
 .mneg { color: #FF8C00 !important; }
 
+/* ── Sidebar collapse button — hide raw icon text fallback ───────────────── */
+[data-testid="stSidebarCollapsedControl"],
+[data-testid="stSidebarCollapseButton"] { overflow: hidden; }
+[data-testid="stSidebarCollapsedControl"] span,
+[data-testid="stSidebarCollapseButton"] span { font-size: 0 !important; }
+
 /* ── Sidebar ─────────────────────────────────────────────────────────────── */
 [data-testid="stSidebar"] {
     border-right: 1px solid #1C2128;
