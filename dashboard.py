@@ -902,9 +902,7 @@ h2, h3 {
 hr { border-color: #1C2128 !important; opacity: 1 !important; }
 
 /* ── Dataframe: hide column action menu (⋮) but keep header-click sort ──── */
-[data-testid="stDataFrame"] button[data-testid="column-header-menu"],
-[data-testid="stDataFrame"] [aria-label="Column actions"],
-[data-testid="stDataFrame"] .glideDataEditor button {
+[data-testid="stDataFrame"] button {
     display: none !important;
 }
 </style>""", unsafe_allow_html=True)
