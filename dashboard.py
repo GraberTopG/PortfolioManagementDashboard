@@ -1069,17 +1069,6 @@ with tab_tech:
     else:
         st.plotly_chart(chart_price_ta(ohlcv, primary), use_container_width=True)
         st.plotly_chart(chart_rsi_macd(ohlcv["Close"], primary), use_container_width=True)
-        with st.expander("Indicator guide"):
-            st.markdown("""
-| Indicator | Signal |
-|-----------|--------|
-| **MA 20 / 50** | Price above both MAs → uptrend; below both → downtrend |
-| **Bollinger Bands** | Price near upper band → potentially overbought; near lower → oversold |
-| **RSI > 70** | Overbought — possible pullback |
-| **RSI < 30** | Oversold — possible bounce |
-| **MACD crossover ↑** | Bullish momentum signal |
-| **MACD crossover ↓** | Bearish momentum signal |
-""")
 
 # ─────────────────────────────────────────────────────────────────────────────
 # TAB 3 · CORRELATION
