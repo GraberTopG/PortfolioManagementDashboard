@@ -1855,7 +1855,7 @@ with tab_risk:
 
 **Drawdown** — Decline from the most recent peak: $\text{{DD}}_t = (P_t - \max_{{s\leq t}} P_s)\,/\,\max_{{s\leq t}} P_s$.
 
-**Risk Contribution** — Each stock's share of total portfolio variance: $\text{RC}_i = w_i\,(\Sigma w)_i\,/\,w^\top\Sigma w$. A stock that is a small position but dominates risk is a candidate for trimming; one that is a large position but low-risk adds diversification efficiently.
+**Risk Contribution** — Each stock's share of total portfolio variance: $\text{{RC}}_i = w_i\,(\Sigma w)_i\,/\,w^\top\Sigma w$. A stock that is a small position but dominates risk is a candidate for trimming; one that is a large position but low-risk adds diversification efficiently.
 
 **Rolling VaR** — VaR recomputed over a sliding window. Spikes indicate periods of elevated risk.
 
