@@ -4,11 +4,11 @@ Quantitative Finance Dashboard
 HSG Master – Programming with Advanced Computer Languages
 
 Tabs:
-  1. Overview        – portfolio metrics vs S&P 500, cumulative returns, benchmark comparison
-  2. Technical       – candlestick, MAs, Bollinger, RSI, MACD  (ticker selector inside)
-  3. Correlation     – heatmap + rolling pairwise correlation
-  4. Portfolio       – efficient frontier, style comparison (EW / MinVar / MeanVariance / RiskParity)
-  5. Risk Metrics    – portfolio VaR/CVaR/drawdown, individual stock drill-down, GBM Monte Carlo simulation
+  1. Overview      – allocation, sector exposure, performance vs benchmarks
+  2. Risk          – VaR/CVaR/drawdown, individual stock drill-down, GBM Monte Carlo simulation
+  3. Correlation   – heatmap + rolling pairwise correlation + OLS scatter
+  4. Optimisation  – style backtest, efficient frontier, optimal allocations
+  5. Technicals    – candlestick, MAs, Bollinger, RSI, MACD  (ticker selector inside)
 
 Data: Yahoo Finance via yfinance — no API key required, full history from 2000.
 """
@@ -501,10 +501,25 @@ def backtest_styles(prices: pd.DataFrame,
     # to its market cap at t=0 means price appreciation automatically keeps
     # the portfolio at MCW proportions (this is why passive index funds are
     # low-turnover).
-    # Initial weights use current market caps — a look-ahead approximation
-    # since historical caps are unavailable from yfinance, but the portfolio
-    # structure itself is correct (no monthly rebalancing).
-    mcw_w0  = w_market_cap(",".join(rets.columns.tolist()))
+    #
+    # Historical starting weights: yfinance only provides current market caps,
+    # but we can infer implied shares outstanding:
+    #   shares_i  ≈  current_mcap_i / current_price_i
+    # Then the market-cap weight at the backtest start date is:
+    #   w_i(t_0)  ∝  shares_i × price_i(t_0)
+    # This removes look-ahead bias — the starting weights reflect relative
+    # market caps on the first day of the backtest, not today.
+    tickers_list   = rets.columns.tolist()
+    mcw_today      = w_market_cap(",".join(tickers_list))       # today's normalised weights ∝ today's caps
+    current_prices = prices[tickers_list].iloc[-1].values.astype(float)
+    start_prices   = prices[tickers_list].iloc[0].values.astype(float)
+    # avoid division by zero
+    current_prices = np.where(current_prices > 0, current_prices, 1.0)
+    start_prices   = np.where(start_prices   > 0, start_prices,   1.0)
+    implied_shares = mcw_today / current_prices          # ∝ actual shares outstanding
+    hist_caps_t0   = implied_shares * start_prices       # ∝ market cap at t=0
+    hist_caps_t0   = np.where(hist_caps_t0 > 0, hist_caps_t0, 1e-10)
+    mcw_w0         = hist_caps_t0 / hist_caps_t0.sum()
     mcw_val = (mcw_w0 * (1 + rets).cumprod()).sum(axis=1)
     port_rets["Market Weight"] = mcw_val.pct_change().dropna()
 
@@ -1219,12 +1234,12 @@ st.divider()
 # ══════════════════════════════════════════════════════════════════════════════
 #  TAB LAYOUT
 # ══════════════════════════════════════════════════════════════════════════════
-tab_overview, tab_tech, tab_corr, tab_port, tab_risk = st.tabs([
+tab_overview, tab_risk, tab_corr, tab_port, tab_tech = st.tabs([
     "Overview",
-    "Technical Analysis",
+    "Risk",
     "Correlation",
-    "Portfolio Optimisation",
-    "Risk Metrics",
+    "Optimisation",
+    "Technicals",
 ])
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1594,9 +1609,11 @@ Data starts from **{_common_start.strftime('%d %b %Y')}** (earliest common date 
                     "*Note: this is inverse-vol weighting, a simplified form of true risk parity.*")
 
         st.markdown("**5. Market Weight (Buy-and-Hold)**")
-        st.latex(r"w_i(0) = \frac{\mathrm{MCap}_i}{\sum_j \mathrm{MCap}_j}, \qquad V(t)=\sum_i w_i(0)\prod_{s=1}^t(1+r_i^s)")
+        st.latex(r"w_i(0) = \frac{\hat{S}_i \cdot P_i(t_0)}{\sum_j \hat{S}_j \cdot P_j(t_0)}, \quad \hat{S}_i = \frac{\mathrm{MCap}_i^{\,\text{today}}}{P_i^{\,\text{today}}}, \qquad V(t)=\sum_i w_i(0)\prod_{s=1}^t(1+r_i^s)")
         st.markdown("Held without rebalancing: price appreciation naturally keeps weights at market-cap proportions. "
-                    "*Limitation: current market caps are used as a proxy for historical starting weights.*")
+                    "Starting weights are derived from implied shares outstanding "
+                    "(current market cap ÷ current price) multiplied by the stock price on the first day of the backtest — "
+                    "so the initial allocation reflects historical market caps, not today's.")
 
 # ─────────────────────────────────────────────────────────────────────────────
 # TAB 5 · RISK METRICS
