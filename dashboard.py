@@ -658,7 +658,7 @@ def chart_price_ta(ohlcv: pd.DataFrame, ticker: str) -> go.Figure:
         low=ohlcv["Low"], close=ohlcv["Close"], name="OHLC",
         increasing_line_color=ACCENT, decreasing_line_color=RED,
     ), row=1, col=1)
-    for period, color in [(20, GOLD), (50, "#ff8c00")]:
+    for period, color in [(20, GOLD), (50, BLUE)]:
         ma = ohlcv["Close"].rolling(period).mean()
         fig.add_trace(go.Scatter(x=ohlcv.index, y=ma, name=f"MA{period}",
                                  line=dict(color=color, width=1.2)), row=1, col=1)
@@ -667,8 +667,11 @@ def chart_price_ta(ohlcv: pd.DataFrame, ticker: str) -> go.Figure:
         fig.add_trace(go.Scatter(x=ohlcv.index, y=band, name=name,
                                  line=dict(color="rgba(150,150,255,0.5)", dash="dot", width=1),
                                  showlegend=True), row=1, col=1)
+    # Colour bars green on up days, red on down days — visible on dark background
+    vol_colors = [GREEN if c >= o else RED
+                  for c, o in zip(ohlcv["Close"], ohlcv["Open"])]
     fig.add_trace(go.Bar(x=ohlcv.index, y=ohlcv["Volume"], name="Volume",
-                         marker_color="rgba(100,149,237,0.4)"), row=2, col=1)
+                         marker_color=vol_colors, opacity=0.65), row=2, col=1)
     fig.update_layout(template=CHART_TEMPLATE,
                       paper_bgcolor=_BG, plot_bgcolor=_PLOT,
                       title=dict(text=f"<b>{ticker} — Price & Volume</b>",
