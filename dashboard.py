@@ -329,6 +329,11 @@ def hhi(weights: np.ndarray) -> float:
 def rolling_vol(r: pd.Series, w: int = 21) -> pd.Series:
     return r.rolling(w, min_periods=5).std() * np.sqrt(AF)
 
+def rolling_sharpe(r: pd.Series, w: int = 252, rf: float = RF) -> pd.Series:
+    """Rolling annualised Sharpe ratio over a window of w trading days."""
+    roll = r.rolling(w, min_periods=max(21, w // 4))
+    return (roll.mean() * AF - rf) / (roll.std() * np.sqrt(AF))
+
 # ── Technical indicators ──────────────────────────────────────────────────────
 def bollinger(p, w=20, n=2):
     m = p.rolling(w).mean()
@@ -371,14 +376,6 @@ def w_min_var(mu, cov):
 def w_max_sharpe(mu, cov, rf=RF):
     """Tangency portfolio: maximise Sharpe using the given risk-free rate."""
     return _opt(lambda w: -_port_stats(w, mu, cov, rf)[2], len(mu))
-
-def w_risk_parity(cov):
-    n = len(cov)
-    def obj(w):
-        sv = np.sqrt(w @ cov @ w)
-        rc = w * (cov @ w) / sv
-        return np.sum((rc - rc.mean())**2)
-    return _opt(obj, n, [{"type": "ineq", "fun": lambda w: w - 0.01}])
 
 def w_inv_vol(rets_df):
     vols = rets_df.std()
@@ -543,7 +540,7 @@ def mc_paths(last_val, daily_rets, n_sim=300, n_days=252):
 # ══════════════════════════════════════════════════════════════════════════════
 
 _FONT  = "IBM Plex Serif, Georgia, serif"
-_MONO  = "IBM Plex Serif, Georgia, serif"
+_MONO  = "IBM Plex Mono, Courier New, monospace"
 _SERIF = "IBM Plex Serif, Georgia, serif"
 _BG    = "#0A0C10"   # paper / outer background (Bloomberg near-black)
 _PLOT  = "#0E1117"   # inner plot area
@@ -937,6 +934,93 @@ def chart_mc(paths, label, last_val) -> go.Figure:
                    xaxis_title="Trading Days", yaxis_title="Value", h=480)
 
 
+def chart_risk_contribution(w: np.ndarray, cov: pd.DataFrame, tickers: list) -> go.Figure:
+    """Grouped bar: % portfolio weight vs % risk contribution per asset."""
+    w = np.array(w, dtype=float)
+    sigma_w  = cov.values @ w
+    port_var = float(w @ sigma_w)
+    if port_var <= 0:
+        return go.Figure()
+    rc_pct = w * sigma_w / port_var * 100   # % contribution to total variance
+    wt_pct = w * 100
+    order     = np.argsort(rc_pct)[::-1]
+    t_sorted  = [tickers[i] for i in order]
+    rc_sorted = rc_pct[order]
+    wt_sorted = wt_pct[order]
+    fig = go.Figure()
+    fig.add_trace(go.Bar(
+        x=t_sorted, y=wt_sorted, name="Weight %",
+        marker_color=BLUE, opacity=0.85,
+        hovertemplate="%{x}: %{y:.1f}%<extra>Weight</extra>",
+    ))
+    fig.add_trace(go.Bar(
+        x=t_sorted, y=rc_sorted, name="Risk Contribution %",
+        marker_color=RED, opacity=0.85,
+        hovertemplate="%{x}: %{y:.1f}%<extra>Risk</extra>",
+    ))
+    return _layout(fig, "Risk Contribution vs Weight (%)",
+                   yaxis_title="% of Total", h=380, barmode="group")
+
+
+def chart_rolling_sharpe(r: pd.Series, label: str, w: int = 252) -> go.Figure:
+    """Rolling annualised Sharpe ratio (252-day window by default)."""
+    rs = rolling_sharpe(r, w)
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=rs.index, y=rs, name=f"Rolling {w}d Sharpe",
+        line=dict(color=ACCENT, width=1.5),
+        fill="tozeroy", fillcolor="rgba(255,140,0,0.10)",
+        hovertemplate="%{y:.2f}<extra></extra>",
+    ))
+    fig.add_hline(y=0, line=dict(color=MUTED, dash="dash", width=1))
+    return _layout(fig, f"{label} — Rolling {w}d Sharpe Ratio",
+                   yaxis_title="Sharpe Ratio", h=340)
+
+
+def render_annual_returns(style_rets: dict) -> None:
+    """Year-by-year returns table — green for positive, red for negative."""
+    styles = [s for s, r in style_rets.items() if not r.empty]
+    if not styles:
+        return
+    years = sorted({y for s in styles for y in style_rets[s].index.year.unique()})
+    ann: dict[str, dict] = {}
+    for s in styles:
+        r = style_rets[s].dropna()
+        ann[s] = {y: float((1 + r[r.index.year == y]).prod() - 1)
+                  for y in years if not r[r.index.year == y].empty}
+
+    th = (f"background:#1C2128;color:#E0E4EA;padding:9px 14px;text-align:center;"
+          f"border-bottom:2px solid #263238;font-family:{_FONT};"
+          f"font-size:0.82rem;font-weight:600;letter-spacing:0.04em;")
+    idx_s = (f"background:#111519;color:#E0E4EA;padding:8px 14px;"
+             f"border-bottom:1px solid #1C2128;font-family:{_FONT};"
+             f"font-size:0.82rem;font-weight:600;")
+    header = "".join(f'<th style="{th}">{y}</th>' for y in years)
+    rows = ""
+    for s in styles:
+        cells = ""
+        for y in years:
+            v = ann[s].get(y)
+            if v is None or np.isnan(v):
+                col, txt = "#546E7A", "—"
+            elif v >= 0:
+                col, txt = "#00C853", f"+{v:.1%}"
+            else:
+                col, txt = "#E53935", f"{v:.1%}"
+            td = (f"background:#111519;color:{col};padding:8px 12px;"
+                  f"border-bottom:1px solid #1C2128;text-align:center;"
+                  f"font-family:{_MONO};font-size:0.82rem;font-variant-numeric:tabular-nums;")
+            cells += f'<td style="{td}">{txt}</td>'
+        rows += f'<tr><td style="{idx_s}">{s}</td>{cells}</tr>'
+
+    st.markdown(
+        f'<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse">'
+        f'<thead><tr><th style="{th}; text-align:left;">Strategy</th>{header}</tr></thead>'
+        f'<tbody>{rows}</tbody></table></div>',
+        unsafe_allow_html=True,
+    )
+
+
 def chart_corr_heatmap(prices: pd.DataFrame) -> go.Figure:
     corr = prices.pct_change().dropna().corr()
     # Diverging scale: dark burgundy (negative) → steel grey (zero) → deep navy (positive)
@@ -1009,8 +1093,8 @@ h2, h3 {
     font-variant-numeric: tabular-nums;
     letter-spacing: 0.01em;
 }
-.mpos { color: #FF8C00 !important; }
-.mneg { color: #FF8C00 !important; }
+.mpos { color: #00C853 !important; }
+.mneg { color: #E53935 !important; }
 
 /* ── Sidebar collapse button — hide raw icon text fallback ───────────────── */
 [data-testid="stSidebarCollapsedControl"],
@@ -1298,12 +1382,27 @@ with tab_overview:
     _sec_labels = [s for s, _ in _sec_sorted]
     _sec_values = [round(v * 100, 2) for _, v in _sec_sorted]
 
+    # Sector pie uses a distinct cool-toned palette so it doesn't mirror
+    # the position pie when the portfolio is concentrated in one sector.
+    _sec_colors = [
+        "#2D6A8A",  # steel blue
+        "#5A8A6A",  # sage green
+        "#8A6A2D",  # warm tan
+        "#6A2D8A",  # slate purple
+        "#2D8A6A",  # teal
+        "#8A2D6A",  # mauve
+        "#6A8A2D",  # olive
+        "#2D5A8A",  # navy
+        "#8A5A2D",  # bronze
+        "#4A2D8A",  # violet
+        "#2D8A5A",  # emerald
+    ]
     fig_sec_pie = go.Figure(go.Pie(
         labels=_sec_labels,
         values=_sec_values,
         hole=0.38,
         marker=dict(
-            colors=_pie_colors[:len(_sec_labels)],
+            colors=_sec_colors[:len(_sec_labels)],
             line=dict(color=_BG, width=2),
         ),
         texttemplate="%{label}<br><b>%{percent}</b>",
@@ -1474,7 +1573,7 @@ with tab_corr:
         fig_rc = go.Figure()
         fig_rc.add_trace(go.Scatter(x=rc.index, y=rc, fill="tozeroy",
                                     line=dict(color=ACCENT, width=1.5),
-                                    fillcolor="rgba(0,212,170,0.1)",
+                                    fillcolor="rgba(255,140,0,0.10)",
                                     name=f"ρ({t1},{t2})"))
         fig_rc.add_hline(y=0, line=dict(color="white", dash="dash", width=1))
         _layout(fig_rc, f"Rolling {rw}d Correlation: {t1} vs {t2}",
@@ -1541,18 +1640,21 @@ with tab_port:
                 "Style":          s_name,
                 "Ann. Return":    f"{ann_return(s_ret):.2%}",
                 "Ann. Volatility":f"{ann_vol(s_ret):.2%}",
-                "Sharpe":         f"{sharpe(s_ret):.2f}",
-                "Sortino":        f"{sortino(s_ret):.2f}",
-                "Calmar":         f"{calmar(s_ret, s_val):.2f}",
+                "Sharpe":         _fmt_num(sharpe(s_ret),        "{:.2f}"),
+                "Sortino":        _fmt_num(sortino(s_ret),       "{:.2f}"),
+                "Calmar":         _fmt_num(calmar(s_ret, s_val), "{:.2f}"),
                 "Max Drawdown":   f"{max_dd(s_val):.2%}",
-                "Beta":           f"{b:.2f}",
-                "Alpha":          f"{a:.2%}",
+                "Beta":           _fmt_num(b, "{:.2f}"),
+                "Alpha":          _fmt_num(a, "{:.2%}"),
                 f"VaR {confidence:.0%}": f"{hist_var(s_ret, confidence):.2%}",
             })
         _df_styles = pd.DataFrame(rows_s).set_index("Style")
         render_table(_df_styles)
         st.download_button("Download as CSV", _df_styles.to_csv(),
                            file_name="style_performance.csv", mime="text/csv")
+
+        st.subheader("Annual Returns by Strategy")
+        render_annual_returns(style_rets)
 
         st.divider()
 
@@ -1639,11 +1741,19 @@ with tab_risk:
     with c3: mcard(f"CVaR / ES ({confidence:.0%})",  f"{cvar(port_r, confidence):.2%}",  False)
     with c4: mcard("Max Drawdown", f"{max_dd(port_val):.2%}", False)
 
+    # ── Risk contribution per stock ───────────────────────────────────────────
+    st.subheader("Risk Contribution per Stock")
+    st.caption("How much of total portfolio variance each position contributes, vs its weight.")
+    st.plotly_chart(chart_risk_contribution(user_w, rets_df.cov(), avail),
+                    use_container_width=True)
+
     st.plotly_chart(chart_dist(port_r, port_label), use_container_width=True)
     st.plotly_chart(chart_dd(port_val, port_label), use_container_width=True)
 
     var_win = st.slider("Rolling VaR window (days)", 20, 63, 30, key="rv_win")
     st.plotly_chart(chart_rolling_var(port_r, port_label, var_win, confidence),
+                    use_container_width=True)
+    st.plotly_chart(chart_rolling_sharpe(port_r, port_label),
                     use_container_width=True)
 
     st.divider()
@@ -1664,6 +1774,7 @@ with tab_risk:
     st.plotly_chart(chart_dd(p_t, risk_t),   use_container_width=True)
     st.plotly_chart(chart_rolling_var(r_t, risk_t, var_win, confidence),
                     use_container_width=True)
+    st.plotly_chart(chart_rolling_sharpe(r_t, risk_t), use_container_width=True)
 
     st.divider()
 
@@ -1744,7 +1855,11 @@ with tab_risk:
 
 **Drawdown** — Decline from the most recent peak: $\text{{DD}}_t = (P_t - \max_{{s\leq t}} P_s)\,/\,\max_{{s\leq t}} P_s$.
 
+**Risk Contribution** — Each stock's share of total portfolio variance: $\text{RC}_i = w_i\,(\Sigma w)_i\,/\,w^\top\Sigma w$. A stock that is a small position but dominates risk is a candidate for trimming; one that is a large position but low-risk adds diversification efficiently.
+
 **Rolling VaR** — VaR recomputed over a sliding window. Spikes indicate periods of elevated risk.
+
+**Rolling Sharpe** — Annualised Sharpe ratio over a trailing 252-day window. Falls below zero when the portfolio underperforms the risk-free rate on a risk-adjusted basis.
 
 **Monte Carlo (GBM)** — Simulates future price paths using Geometric Brownian Motion with zero drift:
 $$P_t = P_{{t-1}}\cdot e^{{\varepsilon_t}},\qquad \varepsilon_t\sim\mathcal{{N}}(0,\,\hat{{\sigma}})$$
