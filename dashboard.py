@@ -1152,8 +1152,16 @@ with tab_overview:
     # ── Portfolio allocation pie + concentration cards ────────────────────────
     st.subheader("Portfolio Allocation")
     _pie_colors = [
-        ACCENT, BLUE, GOLD, GREEN, RED, MUTED,
-        "#8B5CF6", "#14B8A6", "#F97316", "#94A3B8",
+        "#C97A2F",  # muted amber
+        "#3D6B8A",  # muted steel blue
+        "#5A8A5A",  # muted sage green
+        "#7A5A8A",  # muted slate purple
+        "#8A5A5A",  # muted brick
+        "#4A7A7A",  # muted teal
+        "#8A7A4A",  # muted olive gold
+        "#5A6A8A",  # muted navy
+        "#7A8A5A",  # muted moss
+        "#6A5A7A",  # muted mauve
     ]
     fig_pie = go.Figure(go.Pie(
         labels=[f"{t} ({COMPANY_NAMES.get(t, t)})" for t in avail],
