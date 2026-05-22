@@ -989,10 +989,6 @@ with st.sidebar:
     load_btn = st.button("Load Data", type="primary", use_container_width=True)
     st.divider()
     st.markdown("**Select Portfolio Tickers** (max 10)")
-    # Sector browser above the multiselect so the dropdown never overlaps it
-    with st.expander("Browse tickers by sector"):
-        for sector, members in UNIVERSE.items():
-            st.caption(f"{sector}:  {' · '.join(members)}")
     tickers = st.multiselect(
         "Choose up to 10 S&P 500 stocks",
         options=ALL_TICKERS,
