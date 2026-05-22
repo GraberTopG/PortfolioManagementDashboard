@@ -1251,6 +1251,52 @@ with tab_overview:
     st.download_button("Download as CSV", df_table.to_csv(),
                        file_name="portfolio_metrics.csv", mime="text/csv")
 
+    st.divider()
+    st.subheader("Methodology")
+    st.markdown(r"""
+**Returns and compounding**
+
+All return series use daily log-close prices adjusted for splits and dividends.
+Cumulative returns are computed as the compounded product of daily simple returns,
+rebased to 0% at the start of the selected period:
+
+$$r_t = \frac{P_t - P_{t-1}}{P_{t-1}}, \qquad \text{Cumulative}_t = \prod_{s=1}^{t}(1 + r_s) - 1$$
+
+**Portfolio return**
+
+The portfolio daily return is the weighted sum of individual stock returns,
+where weights $w_i$ are either equal ($1/N$) or user-defined and normalised to sum to 1:
+
+$$r_p = \sum_{i=1}^{N} w_i \cdot r_i$$
+
+**Benchmark-relative metrics**
+
+| Metric | Formula | Interpretation |
+|--------|---------|---------------|
+| Tracking Error | $\sigma(r_p - r_b) \cdot \sqrt{252}$ | Annualised volatility of active returns |
+| Information Ratio | $\frac{\overline{r_p - r_b}}{\text{TE}} \cdot \sqrt{252}$ | Active return per unit of tracking risk |
+| Active Share | $\frac{1}{2}\sum_i |w_i - b_i|$ | Portfolio divergence from market-cap benchmark; 0% = index clone, 100% = fully active |
+| Beta | $\beta = \frac{\text{Cov}(r_p, r_b)}{\text{Var}(r_b)}$ | Sensitivity to benchmark moves |
+| Alpha | $\alpha = \bar{r}_p - r_f - \beta(\bar{r}_b - r_f)$ | Annualised excess return above what Beta predicts |
+
+**Concentration (HHI)**
+
+The Herfindahl-Hirschman Index measures portfolio concentration.
+Effective N translates it into an equivalent number of equal-weight positions:
+
+$$\text{HHI} = \sum_{i=1}^{N} w_i^2, \qquad \text{Effective } N = \frac{1}{\text{HHI}}$$
+
+An equal-weight 8-stock portfolio has HHI = 0.125 and Effective N = 8.
+A portfolio with 70% in one name has HHI ≈ 0.50 and Effective N ≈ 2.
+
+**Sector exposure**
+
+Portfolio sector weights are compared against approximate S&P 500 GICS sector
+weights (2025). The active weight (diamond markers) is the difference:
+$w_{\text{sector}}^{\text{portfolio}} - w_{\text{sector}}^{\text{S\&P 500}}$.
+A positive active weight signals an overweight relative to the index.
+""")
+
 # ─────────────────────────────────────────────────────────────────────────────
 # TAB 2 · TECHNICAL ANALYSIS
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1264,6 +1310,50 @@ with tab_tech:
     else:
         st.plotly_chart(chart_price_ta(ohlcv, primary), use_container_width=True)
         st.plotly_chart(chart_rsi_macd(ohlcv["Close"], primary), use_container_width=True)
+
+    st.divider()
+    st.subheader("Methodology")
+    st.markdown(r"""
+**Moving Averages (MA 20 / MA 50)**
+
+Simple moving averages smooth price noise to reveal the underlying trend.
+The 20-day MA captures short-term momentum; the 50-day MA captures the medium-term trend.
+A price crossing above its MA is conventionally read as bullish; crossing below as bearish.
+
+$$\text{MA}_t(n) = \frac{1}{n}\sum_{k=0}^{n-1} P_{t-k}$$
+
+**Bollinger Bands**
+
+Bollinger Bands place a volatility envelope around the 20-day MA.
+The bands expand during high-volatility periods and contract when volatility is low.
+Prices touching the upper band are statistically extended; touching the lower band may signal oversold conditions.
+
+$$\text{Upper} = \text{MA}_{20} + 2\sigma_{20}, \qquad \text{Lower} = \text{MA}_{20} - 2\sigma_{20}$$
+
+where $\sigma_{20}$ is the rolling 20-day standard deviation of prices.
+
+**RSI — Relative Strength Index (14 days)**
+
+RSI measures the speed and magnitude of recent price changes on a 0–100 scale.
+Readings above 70 are conventionally considered overbought; below 30 oversold.
+
+$$\text{RSI} = 100 - \frac{100}{1 + \frac{\overline{G}_{14}}{\overline{L}_{14}}}$$
+
+where $\overline{G}_{14}$ and $\overline{L}_{14}$ are the 14-day average gain and average loss respectively.
+
+**MACD — Moving Average Convergence/Divergence (12/26/9)**
+
+MACD captures momentum by comparing a fast and slow exponential moving average.
+The signal line (9-day EMA of MACD) smooths the indicator; the histogram shows the gap between them.
+A MACD crossing above its signal line is a conventional buy signal; crossing below is a sell signal.
+
+$$\text{MACD} = \text{EMA}_{12} - \text{EMA}_{26}, \qquad \text{Signal} = \text{EMA}_9(\text{MACD})$$
+
+**Important caveat**
+
+Technical indicators are descriptive tools derived solely from price and volume history.
+They do not predict future returns and should not be used in isolation for investment decisions.
+""")
 
 # ─────────────────────────────────────────────────────────────────────────────
 # TAB 3 · CORRELATION
@@ -1300,6 +1390,38 @@ with tab_corr:
         st.plotly_chart(fig_sc, use_container_width=True)
     else:
         st.info("Select two different assets.")
+
+    st.divider()
+    st.subheader("Methodology")
+    st.markdown(r"""
+**Pearson correlation coefficient**
+
+The heatmap shows the pairwise Pearson correlation of daily log returns over the selected period.
+It measures the linear co-movement between two return series, ranging from −1 (perfect inverse) to +1 (perfect co-movement):
+
+$$\rho_{i,j} = \frac{\text{Cov}(r_i,\, r_j)}{\sigma_i \cdot \sigma_j}$$
+
+A high positive correlation between two holdings means they tend to move together —
+adding both to a portfolio provides less diversification benefit than their individual risk suggests.
+For a long-only portfolio, avoiding highly correlated positions is the primary lever for reducing idiosyncratic concentration risk.
+
+**Rolling correlation**
+
+The rolling window (default 21 trading days ≈ 1 month) shows how the pairwise relationship
+changes through time. Correlations are not stable: they tend to spike toward +1 during market
+stress (the "correlation breakdown" effect), which is precisely when diversification is most needed.
+A pair that looks uncorrelated over the full period may have been tightly correlated during every drawdown.
+
+**Return scatter and OLS trendline**
+
+Each point represents one trading day. The OLS (Ordinary Least Squares) trendline fits:
+
+$$r_j = \alpha + \beta \cdot r_i + \varepsilon$$
+
+The slope $\beta$ is equivalent to the Pearson correlation scaled by the ratio of volatilities.
+The scatter of points around the line shows the residual (idiosyncratic) component that is
+not explained by the linear relationship — the wider the scatter, the more diversification benefit remains.
+""")
 
 # ─────────────────────────────────────────────────────────────────────────────
 # TAB 4 · PORTFOLIO OPTIMISATION
