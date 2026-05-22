@@ -407,10 +407,13 @@ def backtest_styles(prices: pd.DataFrame, min_lookback: int = 5) -> dict[str, pd
 
 # ── Monte Carlo ───────────────────────────────────────────────────────────────
 def mc_paths(last_val, daily_rets, n_sim=300, n_days=252):
-    mu, sigma = daily_rets.mean(), daily_rets.std()
+    # Drift set to zero: simulation models volatility / uncertainty only,
+    # not the in-sample historical trend. This avoids falsely extrapolating
+    # a bull-market period and produces realistic downside paths.
+    sigma = daily_rets.std()
     paths = np.zeros((n_days, n_sim))
     paths[0] = last_val
-    shocks = np.random.normal(mu, sigma, (n_days - 1, n_sim))
+    shocks = np.random.normal(0, sigma, (n_days - 1, n_sim))
     for t in range(1, n_days):
         paths[t] = paths[t - 1] * np.exp(shocks[t - 1])
     return paths
