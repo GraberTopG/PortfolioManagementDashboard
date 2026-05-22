@@ -1006,7 +1006,7 @@ spy_r    = bench_prices["SPY"].pct_change().dropna() if "SPY" in bench_prices.co
 # ── Header ────────────────────────────────────────────────────────────────────
 st.title("Portfolio Dashboard")
 st.caption(f"Universe: {', '.join(avail)}  ·  "
-           f"{prices.index[0].strftime('%d %b %Y')} → {prices.index[-1].strftime('%d %b %Y')}  ·  "
+           f"{prices.index[0].strftime('%d %b %Y')} to {prices.index[-1].strftime('%d %b %Y')}  ·  "
            f"{len(prices)} trading days")
 st.divider()
 
