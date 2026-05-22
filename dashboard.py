@@ -639,17 +639,13 @@ def chart_ef(mu, cov, tickers) -> go.Figure:
     fig = go.Figure()
 
     # ── Scatter cloud (random portfolios) ────────────────────────────────────
+    # Flat muted colour so the cloud reads as "feasibility space" and the
+    # optimal portfolio markers (blue / orange) are the only coloured elements
     fig.add_trace(go.Scatter(
         x=vols, y=rets, mode="markers",
         marker=dict(
-            color=srs,
-            # Bloomberg scale: dark (low Sharpe) → blue → orange (high Sharpe)
-            colorscale=[[0.0, "#111519"], [0.5, "#00A8E8"], [1.0, "#FF8C00"]],
-            reversescale=False,
-            size=5, opacity=0.55,
-            colorbar=dict(title="Sharpe", thickness=10, len=0.55,
-                          tickformat=".1f",
-                          tickfont=dict(color=_TICK, family=_MONO)),
+            color="#37474F",   # blue-grey — visible on dark bg, not distracting
+            size=5, opacity=0.50,
         ),
         text=hover,
         hovertemplate="Vol: %{x:.2%}<br>Return: %{y:.2%}<br>%{text}"
