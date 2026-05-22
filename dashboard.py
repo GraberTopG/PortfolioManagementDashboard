@@ -1025,21 +1025,22 @@ with st.sidebar:
     )
     custom_pcts: dict[str, float] = {}
     if weight_mode == "Custom" and tickers:
+        st.caption("Enter each position size in %. Total should equal 100%.")
         n_t = len(tickers)
         default_pct = round(100.0 / n_t, 1)
         ca, cb = st.columns(2)
         for idx, t in enumerate(tickers):
             col = ca if idx % 2 == 0 else cb
             custom_pcts[t] = col.number_input(
-                t, min_value=0.0, max_value=100.0,
+                f"{t} (%)", min_value=0.0, max_value=100.0,
                 value=default_pct, step=0.5, format="%.1f",
                 key=f"w_{t}",
             )
         total_pct = sum(custom_pcts.values())
         if abs(total_pct - 100.0) > 1.0:
-            st.warning(f"Weights sum to {total_pct:.1f}% — auto-normalised to 100%")
+            st.warning(f"Total: {total_pct:.1f}% — will be auto-normalised to 100%")
         else:
-            st.caption(f"Weights: {total_pct:.1f}%")
+            st.success(f"Total: {total_pct:.1f}%")
 
     col1, col2 = st.columns(2)
     start_dt = col1.date_input("Start", value=pd.Timestamp.today() - pd.Timedelta(days=120))
