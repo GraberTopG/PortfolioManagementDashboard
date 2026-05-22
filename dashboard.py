@@ -1512,7 +1512,7 @@ assets, $\\Sigma$ the covariance matrix of returns, and $\\mu$ the vector of
 mean returns.
 """)
 
-        st.markdown("#### 1. Equal Weight (1/N)")
+        st.markdown("**1. Equal Weight (1/N)**")
         st.markdown("*Invest an equal proportion in every asset.*")
         st.latex(r"w_i = \frac{1}{N} \qquad \forall\; i = 1, \ldots, N")
         st.markdown("""
@@ -1521,7 +1521,7 @@ No estimation of expected returns or covariances is required. Research
 it benefits from maximum diversification and has zero estimation error.
 """)
 
-        st.markdown("#### 2. Minimum Variance")
+        st.markdown("**2. Minimum Variance**")
         st.markdown("*Minimise portfolio volatility regardless of expected returns.*")
         st.latex(r"""
 \min_{w} \;\; w^\top \Sigma\, w \qquad
@@ -1533,7 +1533,7 @@ leftmost point on the efficient frontier and requires only the covariance matrix
 — no return forecasts needed.
 """)
 
-        st.markdown("#### 3. Mean-Variance (Tangency Portfolio)")
+        st.markdown("**3. Mean-Variance (Tangency Portfolio)**")
         st.markdown("*Find the portfolio with the best return per unit of risk.*")
         st.markdown(r"""
 The general Mean-Variance framework (Markowitz, 1952) maximises expected
@@ -1558,7 +1558,7 @@ $r_f = 5.25\%$ is the risk-free rate. This is the portfolio implemented here:
 **Mean-Variance optimisation solved as a Maximum Sharpe problem.**
 """)
 
-        st.markdown("#### 4. Risk Parity")
+        st.markdown("**4. Risk Parity**")
         st.markdown("*Weight each asset inversely proportional to its volatility.*")
         st.latex(r"""
 w_i = \frac{1/\sigma_i}{\displaystyle\sum_{j=1}^{N} 1/\sigma_j}
@@ -1571,7 +1571,7 @@ portfolio rather than equal capital. This rule requires no matrix inversion and
 no return forecasts.
 """)
 
-        st.markdown("#### 5. Market Weight Portfolio")
+        st.markdown("**5. Market Weight Portfolio**")
         st.markdown("*Hold every asset in proportion to its market capitalisation.*")
         st.latex(r"""
 w_i = \frac{\mathrm{Market\;cap}_i}{\displaystyle\sum_{j=1}^{N} \mathrm{Market\;cap}_j}
@@ -1628,15 +1628,48 @@ with tab_risk:
     st.plotly_chart(chart_rolling_var(r_t, risk_t, var_win, confidence),
                     use_container_width=True)
 
+    st.divider()
     st.subheader("Methodology")
-    st.markdown(f"""
-| Metric | Definition |
-|--------|-----------|
-| **Historical VaR** | Loss not exceeded on {confidence:.0%} of days, read directly from the return distribution |
-| **Parametric VaR** | Assumes normally distributed returns; uses μ and σ to derive the {confidence:.0%} quantile |
-| **CVaR / ES** | Expected loss *given* VaR is breached — a coherent, tail-sensitive measure |
-| **Max Drawdown** | Largest peak-to-trough decline in the portfolio value over the period |
+    st.markdown(rf"""
+**Value at Risk (VaR)**
+
+VaR answers the question: *what is the maximum loss I should expect on a typical bad day?*
+At a {confidence:.0%} confidence level, VaR is the loss threshold that is exceeded on only {1-confidence:.0%} of trading days.
+
+Two approaches are implemented here:
+
+- **Historical VaR** reads the loss directly from the empirical return distribution — no distributional assumption required:
+
+$$\text{{VaR}}_{{1-\alpha}} = -\text{{Percentile}}(r,\, (1-\alpha) \times 100)$$
+
+- **Parametric VaR** assumes returns are normally distributed and uses the sample mean $\mu$ and standard deviation $\sigma$:
+
+$$\text{{VaR}}_{{1-\alpha}} = -(\mu + z_{{1-\alpha}} \cdot \sigma)$$
+
+where $z_{{1-\alpha}}$ is the standard normal quantile (e.g. $-1.645$ at 95%).
+
+**CVaR / Expected Shortfall (ES)**
+
+CVaR goes further than VaR — it measures the *average* loss on the days that VaR is breached.
+It is a coherent risk measure and better captures tail risk:
+
+$$\text{{CVaR}}_{{1-\alpha}} = -\,\mathbb{{E}}\!\left[r \;\middle|\; r < -\text{{VaR}}_{{1-\alpha}}\right]$$
+
+CVaR is always $\geq$ VaR and is more sensitive to extreme outcomes, making it preferred by risk committees.
+
+**Drawdown**
+
+Drawdown measures the decline from a historical peak. Maximum Drawdown is the worst such decline over the period:
+
+$$\text{{DD}}_t = \frac{{P_t - \max_{{s \leq t}} P_s}}{{\max_{{s \leq t}} P_s}}, \qquad \text{{Max DD}} = \min_t \text{{DD}}_t$$
+
+**Rolling VaR**
+
+The rolling VaR shows how the portfolio's downside risk has evolved through time using a sliding window.
+Spikes in rolling VaR correspond to periods of elevated volatility (e.g. market drawdowns, macro shocks).
+A stable rolling VaR indicates a consistent risk profile; a rising trend signals deteriorating conditions.
 """)
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # TAB 6 · MONTE CARLO
@@ -1709,19 +1742,38 @@ with tab_mc:
     st.divider()
     st.subheader("Methodology")
     st.markdown(r"""
-**Model — Geometric Brownian Motion (GBM)**
+**Geometric Brownian Motion (GBM)**
 
-Each simulated path is generated by compounding daily log-normal shocks:
+Monte Carlo simulation generates a large number of plausible future price paths by repeatedly sampling random shocks.
+Each path evolves according to Geometric Brownian Motion — the standard continuous-time model for asset prices:
 
 $$P_t = P_{t-1} \cdot e^{\varepsilon_t}, \qquad \varepsilon_t \sim \mathcal{N}(0,\, \hat{\sigma})$$
 
-where $\hat{\sigma}$ is the annualised daily volatility estimated from the historical return series of the selected period.
+where $\hat{\sigma}$ is the daily volatility estimated from the historical return series of the selected period.
+After $N$ simulations, the distribution of terminal values gives a probabilistic view of the range of outcomes.
 
-**Key assumptions and limitations**
+**Why zero drift?**
 
-- **Zero drift.** The simulation makes no assumption about future expected returns — paths spread symmetrically around today's value. Extrapolating historical returns (especially from a bull-market window) would produce an optimistic upward bias and mask downside risk.
-- **Constant volatility.** $\hat{\sigma}$ is fixed throughout the simulation. In practice, volatility clusters and spikes during crises (GARCH effects), so tail events may be underestimated.
-- **Log-normal prices.** GBM assumes continuously compounded returns are normally distributed. Real returns exhibit fat tails and negative skew, meaning extreme losses occur more frequently than the model suggests.
-- **Independent increments.** Each daily shock is drawn independently. Serial correlation, momentum, and mean-reversion in actual prices are not captured.
-- **P(loss > 15%)** counts the share of simulated paths whose terminal value falls more than 15% below today's value. This is a direct answer to the question a risk committee asks: what is the probability of a material loss over the horizon? Unlike P(value > today), it is not biased by log-normal skew and gives an immediately actionable risk signal.
+The drift term is set to zero rather than using the historical mean return. Extrapolating past returns — especially from a recent bull-market period — would bias almost all paths upward and mask genuine downside risk. Zero drift means paths spread symmetrically around today's value, driven purely by volatility. This is the conservative and intellectually honest choice for a risk tool.
+
+**Reading the fan chart**
+
+The shaded bands show the 10th, 25th, 75th and 90th percentiles of simulated paths at each point in time.
+The spread of the fan widens with the horizon — reflecting that uncertainty compounds over time.
+A high-volatility portfolio produces a much wider fan than a low-volatility one, even with identical expected returns.
+
+**P(loss > 15%)**
+
+Rather than the misleading P(value > today) — which is biased upward by the log-normal distribution's positive skew — this dashboard reports the probability that the terminal value falls more than 15% below today's level:
+
+$$P(\text{loss} > 15\%) = \frac{1}{N}\sum_{i=1}^{N} \mathbf{1}\!\left[P_T^{(i)} < 0.85 \cdot P_0\right]$$
+
+This is the question a risk committee actually asks: *what is the probability of a material loss?*
+
+**Limitations**
+
+- **Constant volatility** — GBM does not model volatility clustering (GARCH effects). Real volatility spikes during crises, so tail events are likely underestimated.
+- **Normal shocks** — Real return distributions have fat tails and negative skew. Extreme losses occur more frequently than the normal distribution implies.
+- **Independent increments** — Serial correlation, momentum, and mean-reversion are not captured.
+- **Single-factor** — All randomness comes from one source. Macro regime changes, liquidity crises, and correlation breakdowns are outside the model's scope.
 """)
