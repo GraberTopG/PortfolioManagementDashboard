@@ -10,22 +10,51 @@ The analytical framework draws on two sources:
 
 ## Features
 
-| Tab | What you get |
-|-----|-------------|
-| **Overview** | Individual stock cumulative returns with portfolio overlay - Portfolio vs benchmarks (S&P 500, 60/40, US Bonds) - Portfolio metrics table (Sharpe, Sortino, Calmar, Beta, Alpha, VaR, CVaR, Max DD, Win Rate, Skewness, Kurtosis) |
-| **Technical Analysis** | Candlestick chart - MA 20/50 - Bollinger Bands - RSI (14) - MACD (12/26/9) - Volume |
-| **Correlation** | Pairwise return heatmap - Rolling pairwise correlation - Return scatter with OLS trendline |
-| **Portfolio Optimisation** | Backtested cumulative returns with monthly rebalancing - Style performance metrics - Efficient frontier (Monte Carlo) with Capital Market Line - Allocation table for 5 styles - Strategy methodology with formulas |
-| **Risk Metrics** | Portfolio-level VaR / CVaR / drawdown / rolling VaR - Individual stock drill-down (adjustable confidence level) - Risk metric definitions |
-| **Monte Carlo** | GBM portfolio simulation with percentile bands - Single-stock simulation - Terminal value distribution (adjustable paths and horizon) - Methodology section |
+### Overview
+- Portfolio allocation donut chart with position-level weights
+- Concentration metrics: HHI, effective number of positions, largest holding
+- Sector exposure vs S&P 500 with active weights
+- Individual stock cumulative returns with portfolio overlay
+- Portfolio vs benchmarks (S&P 500, 60/40, US Bonds)
+- Performance metrics table: Ann. Return, Volatility, Sharpe, Sortino, Calmar, Max Drawdown, Beta, Alpha, Tracking Error, Information Ratio, Active Share, VaR, CVaR, Skewness, Kurtosis
+- CSV export
 
-### Portfolio styles compared
+### Technical Analysis
+- Candlestick chart with MA 20/50 and Bollinger Bands
+- RSI (14) and MACD (12/26/9) with volume
+
+### Correlation
+- Pairwise return heatmap (burgundy - grey - orange scale)
+- Rolling pairwise correlation (adjustable window)
+- Daily return scatter with OLS trendline
+
+### Portfolio Optimisation
+- Portfolio styles backtested performance (monthly rebalancing)
+- Style performance metrics table with CSV export
+- Efficient frontier (Monte Carlo simulation) with Capital Market Line
+- Optimal portfolio allocations table with CSV export
+- Strategy methodology with formulas
+
+**Portfolio styles compared:**
 - Your Portfolio (equal weight or custom)
-- Equal Weight
+- Equal Weight (1/N)
 - Minimum Variance
-- Mean-Variance (Maximum Sharpe / Tangency)
+- Mean-Variance (Maximum Sharpe / Tangency Portfolio)
 - Risk Parity (Inverse Volatility)
 - Market Weight (market-cap weighted)
+
+### Risk Metrics
+- Portfolio-level VaR (historical and parametric), CVaR, Max Drawdown
+- Return distribution with normal fit overlay
+- Drawdown chart
+- Rolling VaR
+- Individual stock drill-down (adjustable confidence level)
+
+### Monte Carlo
+- GBM portfolio simulation with percentile bands (zero-drift)
+- Terminal value distribution
+- Single-stock simulation with terminal price distribution
+- P(loss > 15%) replacing misleading P(value > today)
 
 ---
 
@@ -85,6 +114,9 @@ Data is fetched automatically via **yfinance** - no API key required. Full histo
 
 - Annualised return, volatility, Sharpe, Sortino, Calmar ratios
 - Beta and Jensen's Alpha vs S&P 500
+- Tracking Error, Information Ratio, Active Share vs market-cap benchmark
+- HHI concentration index and effective number of positions
+- Sector exposure active weights vs S&P 500 GICS sector weights
 - Historical and parametric VaR - CVaR / Expected Shortfall
 - Max Drawdown, Win Rate, Skewness, Kurtosis
 - Markowitz efficient frontier (SLSQP optimisation)
@@ -92,6 +124,7 @@ Data is fetched automatically via **yfinance** - no API key required. Full histo
 - Market-cap weighted portfolio (via yfinance fast_info)
 - GBM Monte Carlo simulation (zero-drift, log-normal price paths)
 - Custom portfolio weights via sidebar (auto-normalised to 100%)
+- Methodology sections with LaTeX formulas in every tab
 
 ---
 

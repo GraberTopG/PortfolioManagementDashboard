@@ -1504,7 +1504,7 @@ with tab_port:
         st.divider()
 
         # ── Strategy methodology ──────────────────────────────────────────────
-        st.subheader("Strategy Methodology")
+        st.subheader("Methodology")
         st.markdown("""
 All optimisations are solved subject to **full investment** (weights sum to 1)
 and **long-only** constraints (no short selling). $N$ denotes the number of
@@ -1628,7 +1628,7 @@ with tab_risk:
     st.plotly_chart(chart_rolling_var(r_t, risk_t, var_win, confidence),
                     use_container_width=True)
 
-    st.subheader("Risk Metric Definitions")
+    st.subheader("Methodology")
     st.markdown(f"""
 | Metric | Definition |
 |--------|-----------|
