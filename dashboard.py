@@ -340,6 +340,21 @@ def w_inv_vol(rets_df):
 def w_equal(n):
     return np.ones(n) / n
 
+@st.cache_data(ttl=86400, show_spinner=False)
+def w_market_cap(tickers_csv: str) -> np.ndarray:
+    """Fetch current market caps via yfinance and return normalised weights."""
+    tickers = [t.strip() for t in tickers_csv.split(",") if t.strip()]
+    caps = []
+    for t in tickers:
+        try:
+            info = yf.Ticker(t).fast_info
+            caps.append(getattr(info, "market_cap", None) or 1.0)
+        except Exception:
+            caps.append(1.0)
+    caps = np.array(caps, dtype=float)
+    caps = np.where(caps <= 0, 1.0, caps)
+    return caps / caps.sum()
+
 def efficient_frontier_mc(mu, cov, n=500):
     n_assets = len(mu)
     vols, rets, srs, wts = [], [], [], []
@@ -356,7 +371,7 @@ def backtest_styles(prices: pd.DataFrame, min_lookback: int = 30) -> dict[str, p
     # append end of series
     rebal_dates = [d for d in month_starts if d in rets.index or d > rets.index[0]]
 
-    style_names = ["Equal Weight", "Min Variance", "Mean-Variance", "Risk Parity"]
+    style_names = ["Equal Weight", "Min Variance", "Mean-Variance", "Risk Parity", "Market Weight"]
     port_rets = {s: pd.Series(dtype=float) for s in style_names}
 
     for i, rebal in enumerate(rebal_dates):
@@ -371,16 +386,18 @@ def backtest_styles(prices: pd.DataFrame, min_lookback: int = 30) -> dict[str, p
         cov = hist.cov()
         n = len(rets.columns)
 
+        mcw = w_market_cap(",".join(rets.columns.tolist()))
         if len(hist) >= min_lookback:
             weights = {
                 "Equal Weight":  w_equal(n),
                 "Min Variance":  w_min_var(mu, cov),
                 "Mean-Variance": w_max_sharpe(mu, cov),   # tangency portfolio
                 "Risk Parity":   w_inv_vol(hist),          # inverse-volatility weighting
+                "Market Weight": mcw,
             }
         else:
             ew = w_equal(n)
-            weights = {s: ew for s in style_names}
+            weights = {s: ew for s in style_names[:-1]} | {"Market Weight": mcw}
 
         for s in style_names:
             p_ret = (period * weights[s]).sum(axis=1)
@@ -702,6 +719,7 @@ def chart_styles_cumret(style_rets: dict) -> go.Figure:
         "Min Variance":   BLUE,
         "Mean-Variance":  GOLD,
         "Risk Parity":    GREEN,
+        "Market Weight":  RED,
     }
     fig = go.Figure()
     for name, p in series.items():
@@ -1153,6 +1171,45 @@ with tab_port:
         mu  = rets_df.mean()
         cov = rets_df.cov()
 
+        # ── Portfolio styles backtest ─────────────────────────────────────────
+        st.subheader("Portfolio Styles — Backtested Performance")
+        st.caption("Monthly rebalancing · in-sample · Equal Weight used for periods with < 30 days of history")
+
+        with st.spinner("Backtesting portfolio styles…"):
+            style_rets = backtest_styles(prices)
+        # Prepend the user's portfolio so it appears first in the legend
+        style_rets = {"Your Portfolio": (rets_df * user_w).sum(axis=1)} | style_rets
+        # In Equal Weight mode Your Portfolio == Equal Weight — drop the duplicate
+        if weight_mode != "Custom":
+            style_rets.pop("Equal Weight", None)
+
+        st.plotly_chart(chart_styles_cumret(style_rets), use_container_width=True)
+
+        # ── Style metrics table ───────────────────────────────────────────────
+        st.subheader("Style Performance Metrics")
+        rows_s = []
+        for s_name, s_ret in style_rets.items():
+            if s_ret.empty:
+                continue
+            s_ret = s_ret.dropna()
+            s_val = (1 + s_ret).cumprod()
+            b, a  = beta_alpha(s_ret, spy_r)
+            rows_s.append({
+                "Style":          s_name,
+                "Ann. Return":    f"{ann_return(s_ret):.2%}",
+                "Ann. Volatility":f"{ann_vol(s_ret):.2%}",
+                "Sharpe":         f"{sharpe(s_ret):.2f}",
+                "Sortino":        f"{sortino(s_ret):.2f}",
+                "Calmar":         f"{calmar(s_ret, s_val):.2f}",
+                "Max Drawdown":   f"{max_dd(s_val):.2%}",
+                "Beta":           f"{b:.2f}",
+                "Alpha":          f"{a:.2%}",
+                f"VaR {confidence:.0%}": f"{hist_var(s_ret, confidence):.2%}",
+            })
+        render_table(pd.DataFrame(rows_s).set_index("Style"))
+
+        st.divider()
+
         # ── Efficient Frontier ────────────────────────────────────────────────
         st.subheader("Efficient Frontier")
         with st.spinner("Simulating portfolios…"):
@@ -1162,14 +1219,15 @@ with tab_port:
 
         # ── Optimal portfolio weights table ───────────────────────────────────
         st.subheader("Optimal Portfolio Allocations")
+        mcw = w_market_cap(",".join(avail))
         wts_dict: dict[str, np.ndarray] = {
             "Your Portfolio": user_w,
             "Min Variance":   w_min_var(mu, cov),
             "Mean-Variance":  w_max_sharpe(mu, cov),
             "Risk Parity":    w_inv_vol(rets_df),
+            "Market Weight":  mcw,
         }
-        # Show Equal Weight as a separate column only when the user has chosen Custom weights
-        # (in Equal Weight mode, Your Portfolio is already equal weight — no duplicate needed)
+        # Show Equal Weight as a separate column only when user has chosen Custom weights
         if weight_mode == "Custom":
             wts_dict = {"Your Portfolio": wts_dict["Your Portfolio"],
                         "Equal Weight":   w_equal(n_assets),
@@ -1247,45 +1305,17 @@ portfolio rather than equal capital. This rule requires no matrix inversion and
 no return forecasts.
 """)
 
-        st.divider()
-
-        # ── Portfolio styles backtest ─────────────────────────────────────────
-        st.divider()
-        st.subheader("Portfolio Styles — Backtested Performance")
-        st.caption("Monthly rebalancing · in-sample · Equal Weight used for periods with < 30 days of history")
-
-        with st.spinner("Backtesting portfolio styles…"):
-            style_rets = backtest_styles(prices)
-        # Prepend the user's portfolio so it appears first in the legend
-        style_rets = {"Your Portfolio": (rets_df * user_w).sum(axis=1)} | style_rets
-        # In Equal Weight mode Your Portfolio == Equal Weight — drop the duplicate
-        if weight_mode != "Custom":
-            style_rets.pop("Equal Weight", None)
-
-        st.plotly_chart(chart_styles_cumret(style_rets), use_container_width=True)
-
-        # ── Style metrics table ───────────────────────────────────────────────
-        st.subheader("Style Performance Metrics")
-        rows_s = []
-        for s_name, s_ret in style_rets.items():
-            if s_ret.empty:
-                continue
-            s_ret = s_ret.dropna()
-            s_val = (1 + s_ret).cumprod()
-            b, a  = beta_alpha(s_ret, spy_r)
-            rows_s.append({
-                "Style":          s_name,
-                "Ann. Return":    f"{ann_return(s_ret):.2%}",
-                "Ann. Volatility":f"{ann_vol(s_ret):.2%}",
-                "Sharpe":         f"{sharpe(s_ret):.2f}",
-                "Sortino":        f"{sortino(s_ret):.2f}",
-                "Calmar":         f"{calmar(s_ret, s_val):.2f}",
-                "Max Drawdown":   f"{max_dd(s_val):.2%}",
-                "Beta":           f"{b:.2f}",
-                "Alpha":          f"{a:.2%}",
-                f"VaR {confidence:.0%}": f"{hist_var(s_ret, confidence):.2%}",
-            })
-        render_table(pd.DataFrame(rows_s).set_index("Style"))
+        st.markdown("#### 5. Market Weight Portfolio")
+        st.markdown("*Hold every asset in proportion to its market capitalisation.*")
+        st.latex(r"""
+w_i = \frac{\mathrm{Market\;cap}_i}{\displaystyle\sum_{j=1}^{N} \mathrm{Market\;cap}_j}
+""")
+        st.markdown(r"""
+Larger companies receive larger weights, mirroring how broad index funds such
+as the S&P 500 are constructed. No optimisation is required — weights are
+determined entirely by the market's collective valuation. Current market caps
+are sourced from Yahoo Finance and held fixed across the backtest period.
+""")
 
 # ─────────────────────────────────────────────────────────────────────────────
 # TAB 5 · RISK METRICS
