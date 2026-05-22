@@ -1149,16 +1149,6 @@ st.caption(
     f"{len(rets_df)} trading days"
 )
 
-if _common_start > pd.Timestamp(start_dt):
-    st.warning(
-        f"**Data starts from {_common_start.strftime('%d %b %Y')}, not {start_dt}.** "
-        f"**{_limiting_t}** is the limiting ticker — its price history only goes back to "
-        f"**{_ticker_starts[_limiting_t].strftime('%d %b %Y')}**. "
-        f"All calculations (backtest, metrics, charts) use the period where every "
-        f"selected ticker has data simultaneously. "
-        f"To extend the history, remove tickers with short price histories."
-    )
-
 st.divider()
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1298,6 +1288,18 @@ with tab_overview:
         st.info("Benchmark data (SPY / AGG) not loaded.")
     else:
         st.plotly_chart(chart_benchmark_comparison(port_r, bench_prices, label=port_label), use_container_width=True)
+
+    if _common_start > pd.Timestamp(start_dt):
+        st.markdown(
+            f"<p style='font-size:0.78rem;color:#546E7A;margin-top:-8px;'>"
+            f"<em>Disclaimer: charts and metrics cover {_common_start.strftime('%d %b %Y')} – "
+            f"{prices.index[-1].strftime('%d %b %Y')} ({len(rets_df)} trading days). "
+            f"The selected period starts from {start_dt}, but <strong>{_limiting_t}</strong> "
+            f"has no price history before {_ticker_starts[_limiting_t].strftime('%d %b %Y')}. "
+            f"All tickers must share a common date range. "
+            f"Remove {_limiting_t} to access an earlier start date.</em></p>",
+            unsafe_allow_html=True,
+        )
 
     st.divider()
 
