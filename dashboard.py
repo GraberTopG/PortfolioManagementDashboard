@@ -1078,9 +1078,31 @@ tab_overview, tab_tech, tab_corr, tab_port, tab_risk, tab_mc = st.tabs([
 # TAB 1 · OVERVIEW
 # ─────────────────────────────────────────────────────────────────────────────
 with tab_overview:
-    st.subheader("Portfolio Performance vs S&P 500")
+    # ── Individual stock cumulative returns + portfolio overlay ───────────────
+    st.subheader("Individual Stock Cumulative Returns")
+    fig_cr = chart_cumret({t: prices[t] for t in avail})
+    port_rebased = (port_val / port_val.iloc[0] - 1) * 100
+    fig_cr.add_trace(go.Scatter(
+        x=port_rebased.index, y=port_rebased,
+        name=port_label,
+        line=dict(color="#E0E4EA", width=2.5, dash="dash"),
+        hovertemplate="%{y:.2f}%<extra>" + port_label + "</extra>",
+    ))
+    st.plotly_chart(fig_cr, use_container_width=True)
 
-    # ── Metrics table ────────────────────────────────────────────────────────
+    st.divider()
+
+    # ── Benchmark comparison ──────────────────────────────────────────────────
+    st.subheader("Portfolio vs Benchmarks")
+    if bench_prices.empty:
+        st.info("Benchmark data (SPY / AGG) not loaded.")
+    else:
+        st.plotly_chart(chart_benchmark_comparison(port_r, bench_prices, label=port_label), use_container_width=True)
+
+    st.divider()
+
+    # ── Metrics table (bottom) ────────────────────────────────────────────────
+    st.subheader("Portfolio Performance vs S&P 500")
     port_metrics = full_metrics(port_r, port_val, spy_r, confidence)
     spy_metrics  = full_metrics(spy_r, (1+spy_r).cumprod(), spy_r, confidence) if not spy_r.empty else {}
 
@@ -1092,21 +1114,6 @@ with tab_overview:
 
     df_table = pd.DataFrame(table_data).set_index("Metric")
     render_table(df_table)
-
-    st.divider()
-
-    # ── Cumulative return of portfolio ────────────────────────────────────────
-    st.subheader("Individual Stock Cumulative Returns")
-    st.plotly_chart(chart_cumret({t: prices[t] for t in avail}), use_container_width=True)
-
-    st.divider()
-
-    # ── Benchmark comparison ──────────────────────────────────────────────────
-    st.subheader("Portfolio vs Benchmarks")
-    if bench_prices.empty:
-        st.info("Benchmark data (SPY / AGG) not loaded — re-click Load Data to fetch.")
-    else:
-        st.plotly_chart(chart_benchmark_comparison(port_r, bench_prices, label=port_label), use_container_width=True)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # TAB 2 · TECHNICAL ANALYSIS
