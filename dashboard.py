@@ -1856,18 +1856,10 @@ with tab_port:
         st.subheader("Portfolio Styles — Backtested Performance")
 
         cost_pct = st.slider(
-            "Monthly rebalancing cost — one-way, per unit of turnover (%)",
+            "Monthly rebalancing costs per unit of turnover (%)",
             min_value=0.00, max_value=0.50, value=0.00, step=0.01,
             format="%.2f%%",
             key="cost_pct",
-        )
-        st.caption(
-            f"Cost deducted at each monthly rebalancing: **{cost_pct:.2f}%** of every 1% "
-            "of portfolio turned over (one-way). "
-            "Equal Weight and Risk Parity rebalance modestly; Mean-Variance typically "
-            "has the highest turnover and is most sensitive to this input. "
-            "0.05% ≈ typical large-cap US equity trading cost. "
-            "*Your Portfolio* is shown as a buy-and-hold baseline — no rebalancing, no cost."
         )
 
         with st.spinner("Backtesting portfolio styles…"):
@@ -1947,8 +1939,10 @@ All strategies are constrained to full investment, long-only, and a 40% single-s
 The backtest is walk-forward: at each monthly rebalancing date only data up to that date is used.
 Data starts from **{_common_start.strftime('%d %b %Y')}** (earliest common date across all selected tickers).
 
-**Transaction costs** are deducted on the first trading day of each holding period.
-At rebalancing date $t$, the one-way turnover is:
+**Transaction costs** — The slider above applies a one-way cost per unit of portfolio turnover at each
+monthly rebalancing. Strategies that change their weights substantially from month to month (such as
+Mean-Variance) incur higher costs than low-turnover strategies (such as Risk Parity or Equal Weight).
+Market Weight (buy-and-hold) and *Your Portfolio* are shown without cost. At rebalancing date $t$, the one-way turnover is:
 """)
         st.latex(r"\mathrm{TO}_t = \tfrac{1}{2}\sum_i \left|w_i^{\mathrm{new}} - w_i^{\mathrm{drifted}}\right|")
         st.markdown(
