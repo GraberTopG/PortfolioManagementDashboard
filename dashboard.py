@@ -1153,23 +1153,145 @@ def chart_rolling_var(r: pd.Series, label: str, w: int, c: float) -> go.Figure:
                    yaxis_title="VaR (%)", h=360)
 
 
-def chart_mc(paths, label, last_val) -> go.Figure:
-    n_days = paths.shape[0]
-    x = list(range(n_days))
+def chart_mc(paths: np.ndarray, label: str, last_val: float) -> go.Figure:
+    """Animated Monte Carlo chart with Plotly Play / Pause buttons.
+
+    Paths grow left-to-right when the user presses Play — all animation is
+    client-side (browser JS), so no Streamlit re-renders are needed.
+
+    Architecture:
+      - Traces 0 … n_display-1  : individual GBM paths (thin, semi-transparent)
+      - Traces n_display … +2   : 90th / 50th / 10th percentile bands
+    Each Plotly frame advances the x-range by frame_step days, updating every
+    trace with the extended data.  ~60 frames keeps the JSON small while
+    producing a smooth ~2.5-second animation for a 252-day horizon.
+    """
+    n_days, n_sim = paths.shape
+    n_display  = min(50, n_sim)          # individual paths shown (stats use all)
+    frame_step = max(1, n_days // 60)    # target ~60 frames
+    frame_indices = list(range(0, n_days, frame_step))
+    if frame_indices[-1] != n_days - 1:
+        frame_indices.append(n_days - 1)
+
+    pct_specs = [
+        (90, "90th pct (bull)", ACCENT),
+        (50, "Median",           GOLD),
+        (10, "10th pct (bear)",  RED),
+    ]
+
+    # Fixed y-axis range computed from the full paths so axes never jump mid-animation
+    y_lo = paths.min() * 0.97
+    y_hi = paths.max() * 1.03
+
+    # ── Initial state: just the starting dot (day 0) ──────────────────────────
     fig = go.Figure()
-    for i in range(min(80, paths.shape[1])):
-        fig.add_trace(go.Scatter(x=x, y=paths[:, i], mode="lines",
-                                 line=dict(width=0.4, color="rgba(100,200,255,0.12)"),
-                                 showlegend=False))
-    for pct, name, color in [(90, "90th pct (bull)", ACCENT),
-                              (50, "Median",           GOLD),
-                              (10, "10th pct (bear)",  RED)]:
-        fig.add_trace(go.Scatter(x=x, y=np.percentile(paths, pct, axis=1),
-                                 name=name, line=dict(color=color, width=2)))
-    fig.add_hline(y=last_val, line=dict(color="white", dash="dash", width=1),
-                  annotation_text="Current value")
-    return _layout(fig, f"{label} — Monte Carlo ({n_days}d forecast)",
-                   xaxis_title="Trading Days", yaxis_title="Value", h=480)
+
+    for i in range(n_display):
+        fig.add_trace(go.Scatter(
+            x=[0], y=[paths[0, i]], mode="lines",
+            line=dict(width=0.4, color="rgba(100,200,255,0.12)"),
+            showlegend=False, hoverinfo="skip",
+        ))
+    for pct, name, color in pct_specs:
+        fig.add_trace(go.Scatter(
+            x=[0], y=[float(np.percentile(paths[0], pct))],
+            name=name, mode="lines",
+            line=dict(color=color, width=2),
+            hovertemplate="%{y:.4f}<extra>" + name + "</extra>",
+        ))
+
+    # ── Animation frames ──────────────────────────────────────────────────────
+    frames = []
+    for k in frame_indices:
+        x = list(range(k + 1))
+        frame_data = []
+        for i in range(n_display):
+            frame_data.append(go.Scatter(x=x, y=list(paths[:k + 1, i])))
+        for pct, _, _ in pct_specs:
+            frame_data.append(go.Scatter(
+                x=x,
+                y=list(np.percentile(paths[:k + 1, :], pct, axis=1)),
+            ))
+        frames.append(go.Frame(data=frame_data, name=str(k)))
+    fig.frames = frames
+
+    # ── Layout ────────────────────────────────────────────────────────────────
+    fig.update_layout(
+        template=CHART_TEMPLATE,
+        paper_bgcolor=_BG, plot_bgcolor=_PLOT,
+        height=500,
+        title=dict(
+            text=f"<b>{label} — Monte Carlo ({n_days}d forecast)</b>",
+            font=dict(size=14, color="#E0E4EA", family=_SERIF),
+            pad=dict(b=10),
+        ),
+        xaxis=dict(
+            title="Trading Days", range=[0, n_days - 1],
+            gridcolor=_GRID, linecolor=_AXIS,
+            tickfont=dict(color=_TICK, family=_MONO),
+            title_font=dict(color=_TICK, family=_FONT),
+        ),
+        yaxis=dict(
+            title="Value", range=[y_lo, y_hi],
+            gridcolor=_GRID, linecolor=_AXIS,
+            tickfont=dict(color=_TICK, family=_MONO),
+            title_font=dict(color=_TICK, family=_FONT),
+        ),
+        font=dict(family=_FONT, color="#78909C"),
+        hovermode="x unified",
+        legend=dict(
+            orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1,
+            bgcolor="rgba(0,0,0,0)",
+            font=dict(color="#78909C", size=11, family=_MONO),
+        ),
+        hoverlabel=dict(bgcolor="#111519", bordercolor="#263238",
+                        font=dict(family=_MONO, size=12, color="#E0E4EA")),
+        # Current-value reference line as a layout shape (persists across frames)
+        shapes=[dict(
+            type="line", x0=0, x1=n_days - 1, y0=last_val, y1=last_val,
+            line=dict(color="rgba(255,255,255,0.45)", dash="dash", width=1),
+        )],
+        annotations=[dict(
+            x=n_days - 1, y=last_val, xanchor="right", yanchor="bottom",
+            text="Current value", showarrow=False,
+            font=dict(color="rgba(255,255,255,0.45)", size=10, family=_MONO),
+        )],
+        # ── Play / Pause buttons ──────────────────────────────────────────────
+        updatemenus=[dict(
+            type="buttons",
+            showactive=False,
+            direction="left",
+            x=0.0, xanchor="left",
+            y=1.13, yanchor="top",
+            pad=dict(r=8, t=0),
+            bgcolor="#111519",
+            bordercolor=ACCENT,
+            borderwidth=1,
+            font=dict(color=ACCENT, family=_MONO, size=12),
+            buttons=[
+                dict(
+                    label="▶  Play",
+                    method="animate",
+                    args=[None, dict(
+                        frame=dict(duration=40, redraw=True),
+                        fromcurrent=True,
+                        transition=dict(duration=0),
+                        mode="immediate",
+                    )],
+                ),
+                dict(
+                    label="⏸  Pause",
+                    method="animate",
+                    args=[[None], dict(
+                        frame=dict(duration=0, redraw=False),
+                        mode="immediate",
+                        transition=dict(duration=0),
+                    )],
+                ),
+            ],
+        )],
+    )
+    return fig
 
 
 def chart_risk_contribution(w: np.ndarray, cov: pd.DataFrame, tickers: list) -> go.Figure:
