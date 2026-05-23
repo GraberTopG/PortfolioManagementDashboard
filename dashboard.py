@@ -628,7 +628,8 @@ def efficient_frontier_mc(mu, cov, n=500):
 # ── Portfolio backtest ────────────────────────────────────────────────────────
 def backtest_styles(prices: pd.DataFrame,
                     min_lookback: int = 63,
-                    rf_series: pd.Series | None = None) -> dict[str, pd.Series]:
+                    rf_series: pd.Series | None = None,
+                    cost_pct: float = 0.0) -> dict[str, pd.Series]:
     """
     Walk-forward backtest with monthly rebalancing for EW, Min Variance,
     Mean-Variance and Risk Parity (inverse-vol). Market Weight is handled
@@ -641,6 +642,18 @@ def backtest_styles(prices: pd.DataFrame,
     rf_series: annualised T-bill rate as a decimal time series. When provided,
     the Max-Sharpe optimiser uses the historically correct RF rate at each
     rebalancing date rather than the fixed global constant.
+
+    cost_pct: one-way transaction cost as a percentage of the amount traded
+    at each rebalancing (e.g. 0.05 = 5 bps per unit of one-way turnover).
+    At each rebalancing date the one-way turnover is computed as:
+        TO = 0.5 × Σ|w_new_i − w_drifted_i|
+    where w_drifted are the weights that have naturally drifted from the
+    previous rebalancing due to price moves. The cost deducted is:
+        cost_hit = TO × cost_pct / 100
+    applied as a return reduction on the first day of the holding period.
+    Market Weight is exempt (true buy-and-hold, zero rebalancing turnover).
+    The first rebalancing date is treated as portfolio inception — no turnover
+    is assumed at t=0 (cost only accrues from the second rebalancing onward).
     """
     rets = prices.pct_change().dropna()
     month_starts = rets.resample("MS").first().index.tolist()
@@ -649,6 +662,9 @@ def backtest_styles(prices: pd.DataFrame,
     # Only the four actively managed styles use monthly rebalancing
     style_names = ["Equal Weight", "Min Variance", "Mean-Variance", "Risk Parity"]
     port_rets   = {s: pd.Series(dtype=float) for s in style_names}
+    # Track drifted weights at the END of each holding period so we can compute
+    # turnover at the NEXT rebalancing.  Initialised to None (= inception, no cost).
+    prev_w = {s: None for s in style_names}
 
     for i, rebal in enumerate(rebal_dates):
         hold_end = rebal_dates[i + 1] if i + 1 < len(rebal_dates) else rets.index[-1]
@@ -688,7 +704,23 @@ def backtest_styles(prices: pd.DataFrame,
             weights = {s: ew for s in style_names}
 
         for s in style_names:
-            p_ret = (period * weights[s]).sum(axis=1)
+            new_w = weights[s]
+            p_ret = (period * new_w).sum(axis=1).copy()
+
+            # ── Transaction cost ─────────────────────────────────────────────
+            # Deduct cost on the first day of each holding period.
+            # Inception (prev_w is None) is assumed zero-turnover.
+            if cost_pct > 0.0 and prev_w[s] is not None and len(p_ret) > 0:
+                one_way_to = 0.5 * float(np.abs(new_w - prev_w[s]).sum())
+                p_ret.iloc[0] -= one_way_to * cost_pct / 100.0
+
+            # ── Update drifted weights for next rebalancing ──────────────────
+            # Weights drift as individual prices move over the holding period.
+            # Drifted weight_i ∝ new_w_i × ∏(1 + r_i) over the holding period.
+            period_growth = (1.0 + period).prod()   # cumulative return per stock
+            raw = new_w * period_growth.values
+            prev_w[s] = raw / raw.sum() if raw.sum() > 0 else new_w.copy()
+
             port_rets[s] = pd.concat([port_rets[s], p_ret])
 
     # ── Market Weight: true buy-and-hold, no rebalancing ─────────────────────
@@ -1823,8 +1855,23 @@ with tab_port:
         # ── Portfolio styles backtest ─────────────────────────────────────────
         st.subheader("Portfolio Styles — Backtested Performance")
 
+        cost_pct = st.slider(
+            "Monthly rebalancing cost — one-way, per unit of turnover (%)",
+            min_value=0.00, max_value=0.50, value=0.00, step=0.01,
+            format="%.2f%%",
+            key="cost_pct",
+        )
+        st.caption(
+            f"Cost deducted at each monthly rebalancing: **{cost_pct:.2f}%** of every 1% "
+            "of portfolio turned over (one-way). "
+            "Equal Weight and Risk Parity rebalance modestly; Mean-Variance typically "
+            "has the highest turnover and is most sensitive to this input. "
+            "0.05% ≈ typical large-cap US equity trading cost. "
+            "*Your Portfolio* is shown as a buy-and-hold baseline — no rebalancing, no cost."
+        )
+
         with st.spinner("Backtesting portfolio styles…"):
-            style_rets = backtest_styles(prices, rf_series=rf_hist)
+            style_rets = backtest_styles(prices, rf_series=rf_hist, cost_pct=cost_pct)
         # Prepend the user's portfolio so it appears first in the legend
         style_rets = {"Your Portfolio": (rets_df * user_w).sum(axis=1)} | style_rets
         # In Equal Weight mode Your Portfolio == Equal Weight — drop the duplicate
@@ -1899,7 +1946,21 @@ with tab_port:
 All strategies are constrained to full investment, long-only, and a 40% single-stock cap.
 The backtest is walk-forward: at each monthly rebalancing date only data up to that date is used.
 Data starts from **{_common_start.strftime('%d %b %Y')}** (earliest common date across all selected tickers).
+
+**Transaction costs** are deducted on the first trading day of each holding period.
+At rebalancing date $t$, the one-way turnover is:
 """)
+        st.latex(r"\mathrm{TO}_t = \tfrac{1}{2}\sum_i \left|w_i^{\mathrm{new}} - w_i^{\mathrm{drifted}}\right|")
+        st.markdown(
+            r"where $w^{\mathrm{drifted}}$ are the weights that have naturally drifted from the "
+            r"previous rebalancing due to price changes. The cost deducted from the portfolio is:"
+        )
+        st.latex(r"\text{cost}_t = \mathrm{TO}_t \times c")
+        st.markdown(
+            r"with $c$ set by the slider above (one-way cost per unit of turnover). "
+            r"Market Weight (buy-and-hold) has zero turnover and incurs no cost. "
+            r"*Your Portfolio* is also shown without cost as a buy-and-hold baseline."
+        )
 
         st.markdown("**1. Equal Weight**")
         st.latex(r"w_i = \frac{1}{N}")
