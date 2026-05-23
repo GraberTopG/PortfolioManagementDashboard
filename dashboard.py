@@ -1189,7 +1189,7 @@ def chart_mc(paths: np.ndarray, label: str, last_val: float) -> go.Figure:
     for i in range(n_display):
         fig.add_trace(go.Scatter(
             x=[0], y=[paths[0, i]], mode="lines",
-            line=dict(width=0.4, color="rgba(100,200,255,0.12)"),
+            line=dict(width=0.6, color="rgba(100,200,255,0.28)"),
             showlegend=False, hoverinfo="skip",
         ))
     for pct, name, color in pct_specs:
