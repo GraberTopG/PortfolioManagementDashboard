@@ -2131,6 +2131,18 @@ with tab_risk:
     st.plotly_chart(chart_rolling_var(port_r, port_label, var_win, confidence),
                     use_container_width=True)
 
+    st.subheader("Rolling Sharpe Ratio")
+    st.plotly_chart(chart_rolling_sharpe(port_r, port_label),
+                    use_container_width=True)
+
+    st.divider()
+
+    # ── Risk contribution ─────────────────────────────────────────────────────
+    st.subheader("Risk Contribution per Stock")
+    st.caption("How much of total portfolio variance each position contributes, vs its weight.")
+    st.plotly_chart(chart_risk_contribution(user_w, rets_df.cov(), avail),
+                    use_container_width=True)
+
     st.divider()
 
     # ── Individual stock drill-down ───────────────────────────────────────────
@@ -2218,18 +2230,6 @@ with tab_risk:
     _layout(fig_th2, f"{mc_t} — Terminal Price Distribution ({mc_days}d)",
             xaxis_title="Price (USD)", yaxis_title="Frequency", h=360)
     st.plotly_chart(fig_th2, use_container_width=True)
-
-    st.divider()
-
-    # ── Risk contribution + Rolling Sharpe ───────────────────────────────────
-    st.subheader("Risk Contribution per Stock")
-    st.caption("How much of total portfolio variance each position contributes, vs its weight.")
-    st.plotly_chart(chart_risk_contribution(user_w, rets_df.cov(), avail),
-                    use_container_width=True)
-
-    st.subheader("Rolling Sharpe Ratio")
-    st.plotly_chart(chart_rolling_sharpe(port_r, port_label),
-                    use_container_width=True)
 
     st.divider()
     st.subheader("Methodology")
