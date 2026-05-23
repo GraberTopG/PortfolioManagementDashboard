@@ -219,8 +219,8 @@ Each tab answers one core portfolio question:
 
 ### 1. Clone the repo
 ```bash
-git clone https://github.com/GraberTopG/quant-finance-dashboard.git
-cd quant-finance-dashboard
+git clone https://github.com/GraberTopG/PortfolioManagementDashboard.git
+cd PortfolioManagementDashboard
 ```
 
 ### 2. Install dependencies
