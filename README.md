@@ -8,6 +8,144 @@ The analytical framework draws on two sources:
 
 ---
 
+## Development process
+
+This section documents the step-by-step process followed to design and build the dashboard, from the initial architecture decision to the final refinements.
+
+---
+
+### Step 1 — Project scoping and architecture decision
+
+The first decision was choosing the right framework. The GS Quant library from Goldman Sachs requires access to the Marquee API, which is restricted to institutional clients. The project was therefore rebuilt from scratch using the same analytical concepts (rolling statistics, efficient frontier, VaR, Monte Carlo GBM) but with **yfinance** as the free data source and **Streamlit** as the UI framework.
+
+The core architecture was designed as a single-file application (`dashboard.py`) to keep the course submission self-contained, with a layered structure:
+
+```
+Constants & universe  →  Data layer (yfinance)  →  Analytics functions
+→  Chart builders (Plotly)  →  Streamlit UI (tabs)
+```
+
+Each layer is independent: analytics functions take plain NumPy/pandas inputs, chart functions take analytics outputs, and the UI calls both. This separation makes the code testable and readable.
+
+---
+
+### Step 2 — Data layer and caching
+
+The data layer was built around two cached yfinance wrappers:
+
+- `_yf_close()` — batch-downloads adjusted close prices for all selected tickers plus benchmarks (SPY, AGG) in a single API call, returning a clean `pd.DataFrame`.
+- `_yf_ohlcv()` — downloads full OHLCV data for a single ticker for the Technical Analysis tab.
+
+**Key challenge — split-adjustment distortion.** yfinance's `auto_adjust=True` multiplies historical share *volumes* by the cumulative split factor, making pre-split periods appear to have enormously more activity than today. For example, Apple's 7-for-1 (2014) and 4-for-1 (2020) splits produce a 28× inflation of pre-2014 volume. The fix was to plot **dollar volume** (shares × price) instead of share count, which cancels the distortion because the price adjustment and volume adjustment are equal and opposite.
+
+**Key challenge — common start date.** All portfolio calculations require every ticker to have a price on the same date. The effective start date is determined by the most recently listed ticker (e.g. adding META limits history to May 2012). A disclaimer was added to the Overview tab that identifies the bottleneck ticker automatically.
+
+A second cached loader, `load_rf_series()`, downloads the 3-month US T-bill rate (`^IRX`) to provide a time-varying risk-free rate for the backtest optimiser.
+
+---
+
+### Step 3 — Analytics functions
+
+All mathematical functions were written as pure, stateless Python functions operating on `pd.Series` or `np.ndarray` inputs, with no Streamlit dependency. This makes them independently testable and reusable.
+
+The following analytics were implemented in sequence:
+
+| Function | What it computes |
+|---|---|
+| `log_returns`, `simple_returns` | Daily return series |
+| `ann_return`, `ann_vol` | Annualised return and volatility |
+| `sharpe`, `sortino`, `calmar` | Risk-adjusted return ratios |
+| `hist_var`, `param_var`, `cvar` | Value-at-Risk and Expected Shortfall |
+| `max_dd`, `dd_series` | Maximum and rolling drawdown |
+| `beta_alpha` | CAPM beta and Jensen's alpha vs benchmark |
+| `tracking_error`, `information_ratio` | Active risk and active return efficiency |
+| `active_share` | Portfolio overlap vs benchmark |
+| `hhi` | Herfindahl-Hirschman concentration index |
+| `rolling_vol`, `rolling_sharpe` | Rolling window statistics |
+| `bollinger`, `rsi`, `macd` | Technical indicators |
+| `_fmt_num` | NaN/inf-safe number formatter for display tables |
+| `full_metrics` | Full performance metrics dictionary for the Overview table |
+
+**Key design decision — NaN safety.** Many ratios (Sharpe, Sortino, Calmar, IR) can produce `NaN` or `inf` when denominators are zero or the series is too short. A `_fmt_num(val, fmt)` helper was written to intercept these and return `"-"` rather than displaying `"nan"` in the UI.
+
+---
+
+### Step 4 — Portfolio optimisation
+
+The optimisation module was built around SciPy's SLSQP solver with two hard constraints applied to every strategy:
+- **Fully invested**: weights sum to 1
+- **Long-only with 40% cap**: `0 ≤ wᵢ ≤ 0.40` — prevents the solver from concentrating into whichever stock dominated the in-sample period
+
+Three optimised strategies were implemented:
+
+1. **Min Variance** (`w_min_var`) — minimises `w'Σw`; uses only the covariance matrix, no return forecasts required.
+2. **Max Sharpe** (`w_max_sharpe`) — maximises `(w'μ − rᶠ) / √(w'Σw)`; uses historical means as return estimates (noisy but unbiased).
+3. **Inverse Volatility / Risk Parity** (`w_inv_vol`) — weights proportional to `1/σᵢ`; no optimisation required, low turnover.
+
+The **Efficient Frontier** was approximated by sampling 600 Dirichlet-random portfolios and plotting (volatility, return) coloured by Sharpe ratio, with the two optimal portfolios overlaid as labelled markers.
+
+---
+
+### Step 5 — Walk-forward backtest
+
+The backtest was the most methodologically complex component. The key design requirements were:
+
+- **No look-ahead bias**: at each monthly rebalancing date, only data available *up to that date* is used (expanding window).
+- **Time-varying risk-free rate**: the Max-Sharpe optimiser uses `rf_series.asof(rebal)` — the T-bill rate on the rebalancing date — rather than a fixed modern rate that would distort Sharpe estimates in the 2009–2022 near-zero rate environment.
+- **Realistic Market Weight starting point**: since yfinance only provides current market caps, historical starting weights were approximated as `implied_shares × price(t₀)`, where `implied_shares = current_mcap / current_price`. This removes the most obvious form of look-ahead bias (using today's weights as if they applied historically).
+- **Transaction costs**: a turnover-based cost slider was added. At each rebalancing, one-way turnover is computed as `0.5 × Σ|w_new − w_drifted|`, where `w_drifted` are the weights that have naturally drifted from the previous rebalancing due to price moves. The cost `turnover × c` is deducted on the first day of the holding period.
+
+---
+
+### Step 6 — Monte Carlo simulation
+
+GBM paths were implemented with **zero drift** — the simulation models pure volatility/uncertainty without extrapolating the in-sample trend. This avoids falsely projecting a bull-market return into the future.
+
+In a later iteration, the static chart was replaced with a **Plotly animation**: paths start at the current portfolio value and grow left-to-right when the user clicks Play. The animation uses ~60 frames at 40 ms/frame (≈ 2.5-second reveal) and runs entirely in the browser via Plotly's JavaScript engine, requiring no Streamlit re-renders. Up to 50 individual paths are shown alongside the 10th, 50th, and 90th percentile bands.
+
+---
+
+### Step 7 — Streamlit UI and tab structure
+
+The UI was structured around five tabs, each designed to answer a single core portfolio question. The sidebar exposes four controls: ticker multiselect (up to 10 stocks, ~190 S&P 500 universe), date range picker, portfolio weighting mode (equal or custom), and per-ticker weight inputs in Custom mode.
+
+Several UI challenges were solved iteratively:
+
+- **Bloomberg terminal aesthetic** — a custom CSS block applies IBM Plex Serif/Mono fonts, a near-black background, and an orange accent colour throughout all Streamlit components (tabs, buttons, sliders, expanders).
+- **KPI metric cards** — custom HTML/CSS `mcard()` components display headline numbers (VaR, Sharpe, Drawdown) in a style matching Bloomberg Terminal function-key screens.
+- **Static HTML tables** — Streamlit's `st.dataframe()` renders editable, interactive tables with menus. Custom `render_table()` and `render_annual_returns()` functions generate read-only HTML tables with the correct dark theme.
+- **Consistent NaN handling** — all displayed numbers pass through `_fmt_num()` to prevent `"nan"` or `"inf"` appearing in the UI when a calculation has insufficient data.
+
+---
+
+### Step 8 — Refinements and quality fixes
+
+A series of bugs and design issues were identified and corrected after initial implementation:
+
+| Issue | Fix |
+|---|---|
+| KPI positive/negative colours both orange | `.mpos` set to green `#00C853`, `.mneg` set to red `#E53935` |
+| MA20 and MA50 both orange in Technicals | MA50 changed to Bloomberg blue `#00A8E8` |
+| Monospace font set to serif family | `_MONO` corrected to `"IBM Plex Mono, Courier New, monospace"` |
+| `NaN` displayed in style metrics table | `_fmt_num()` applied consistently to all ratio fields |
+| Rolling correlation fill colour wrong | Changed from teal to orange to match accent |
+| Volume bars distorted by split adjustments | Switched from share count to dollar volume (`shares × price`) |
+| NameError in raw f-string with LaTeX braces | `\text{RC}` → `\text{{RC}}` in `rf"""..."""` string |
+| Sector pie sharing colours with position pie | Separate cool-toned palette assigned to sector donut |
+| Market Weight using today's weights | Historical starting weights derived from implied shares × start-date price |
+
+---
+
+### Step 9 — Documentation
+
+The final step was a documentation pass:
+- A full module docstring was added to `dashboard.py` explaining the tab structure, key design choices, and dependencies.
+- All analytics functions received docstrings explaining inputs, outputs, and methodological notes.
+- The README was rewritten to include the tab structure, full feature list, methodology notes (walk-forward backtest, market weight derivation, time-varying RF, risk contribution formula, dollar volume), analytics reference table with LaTeX formulas, tech stack table, and this development process overview.
+- A **Critical Limitations** section was added documenting survivorship bias, GBM assumptions, covariance stationarity, noisy sample-mean estimates, backtest execution assumptions, and ten concrete directions for further research.
+
+---
+
 ## Tab structure
 
 Each tab answers one core portfolio question:
