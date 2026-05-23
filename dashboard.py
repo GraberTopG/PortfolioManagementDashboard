@@ -1405,7 +1405,7 @@ def chart_corr_heatmap(prices: pd.DataFrame) -> go.Figure:
 # ══════════════════════════════════════════════════════════════════════════════
 
 st.set_page_config(page_title="US Large Cap Long Only Portfolio Dashboard", page_icon="📊",
-                   layout="wide", initial_sidebar_state="expanded")
+                   layout="wide", initial_sidebar_state="auto")
 
 st.markdown("""
 <style>
@@ -1519,6 +1519,79 @@ h2, h3 {
 /* ── Dividers ────────────────────────────────────────────────────────────── */
 hr { border-color: #1C2128 !important; opacity: 1 !important; }
 
+/* ══════════════════════════════════════════════════════════════════════════
+   MOBILE  (≤ 768 px)
+   ══════════════════════════════════════════════════════════════════════════ */
+@media screen and (max-width: 768px) {
+
+    /* Main container - tighter padding on small screens */
+    .block-container {
+        padding-left: 0.75rem !important;
+        padding-right: 0.75rem !important;
+        padding-top: 1rem !important;
+    }
+
+    /* Headings - scale down so they don't dominate the viewport */
+    h1 {
+        font-size: 1.35rem !important;
+        letter-spacing: 0em !important;
+    }
+    h2, h3 {
+        font-size: 1.0rem !important;
+    }
+
+    /* st.columns - stack vertically instead of side by side.
+       Targets the flex row that Streamlit generates for every st.columns() call. */
+    div[data-testid="stHorizontalBlock"] {
+        flex-wrap: wrap !important;
+        gap: 0 !important;
+    }
+    div[data-testid="column"] {
+        width: 100% !important;
+        flex: 1 1 100% !important;
+        min-width: 100% !important;
+    }
+
+    /* KPI metric cards - tighter padding, smaller value text */
+    .mcard {
+        padding: 10px 12px !important;
+        margin-bottom: 4px !important;
+    }
+    .mvalue { font-size: 1.05rem !important; }
+    .mlabel {
+        font-size: 0.57rem !important;
+        letter-spacing: 0.07em !important;
+    }
+
+    /* Tabs - scroll horizontally so all five labels fit without wrapping */
+    .stTabs [data-baseweb="tab-list"] {
+        overflow-x: auto !important;
+        flex-wrap: nowrap !important;
+        -webkit-overflow-scrolling: touch !important;
+        scrollbar-width: none !important;
+    }
+    .stTabs [data-baseweb="tab-list"]::-webkit-scrollbar { display: none !important; }
+    .stTabs [data-baseweb="tab"] {
+        font-size: 0.60rem !important;
+        padding: 6px 10px !important;
+        letter-spacing: 0.05em !important;
+        white-space: nowrap !important;
+    }
+
+    /* Captions and body text - slightly smaller */
+    .stCaption p, .stMarkdown p { font-size: 0.80rem !important; }
+
+    /* Sliders - prevent overflow on narrow screens */
+    div[data-testid="stSlider"] { width: 100% !important; }
+
+    /* Sidebar - collapses natively on mobile; just ensure no min-width forces overflow */
+    section[data-testid="stSidebar"] { min-width: 0 !important; }
+
+    /* Selectboxes and multiselects - full width */
+    div[data-testid="stSelectbox"],
+    div[data-testid="stMultiSelect"] { width: 100% !important; }
+}
+
 </style>""", unsafe_allow_html=True)
 
 
@@ -1547,9 +1620,10 @@ def render_table(df: pd.DataFrame) -> None:
         for idx, row in df.iterrows()
     )
     st.markdown(
-        f'<table style="width:100%;border-collapse:collapse">'
+        f'<div style="overflow-x:auto;-webkit-overflow-scrolling:touch">'
+        f'<table style="width:100%;border-collapse:collapse;min-width:400px">'
         f'<thead><tr><th style="{th_style}"></th>{header}</tr></thead>'
-        f'<tbody>{rows}</tbody></table>',
+        f'<tbody>{rows}</tbody></table></div>',
         unsafe_allow_html=True,
     )
 
