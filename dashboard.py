@@ -6,7 +6,7 @@ HSG Master – Programming with Advanced Computer Languages – 2025/26
 An interactive quantitative finance dashboard built with Streamlit and Plotly.
 Analytical framework draws on Markowitz mean-variance optimisation, risk parity,
 factor-based portfolio construction, drawdown analysis, and GBM Monte Carlo
-simulation. All market data is fetched live via yfinance — no API key required.
+simulation. All market data is fetched live via yfinance  -  no API key required.
 
 Tab structure (each tab answers one core portfolio question):
   1. Overview      – "What do I own and how has it performed?"
@@ -203,7 +203,7 @@ COMPANY_NAMES = {
 }
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  DATA LAYER  —  Yahoo Finance (yfinance), no API key required
+#  DATA LAYER   -   Yahoo Finance (yfinance), no API key required
 # ══════════════════════════════════════════════════════════════════════════════
 
 @st.cache_data(ttl=3600, show_spinner=False)
@@ -370,8 +370,8 @@ def full_metrics(r: pd.Series, prices: pd.Series, bench_r: pd.Series,
         prices:  Cumulative price/value series (used for drawdown and Calmar).
         bench_r: Benchmark daily return series (SPY) for Beta, Alpha, TE, IR.
         conf:    VaR / CVaR confidence level (default 0.95).
-        port_w:  Portfolio weight vector — required for Active Share calculation.
-        bench_w: Benchmark weight vector — required for Active Share calculation.
+        port_w:  Portfolio weight vector  -  required for Active Share calculation.
+        bench_w: Benchmark weight vector  -  required for Active Share calculation.
 
     Returns:
         Ordered dict of pre-formatted metric strings ready for table display.
@@ -492,7 +492,7 @@ def _port_stats(w, mu, cov, rf=RF):
         rf:  Annualised risk-free rate (default: global RF constant).
 
     Returns:
-        (ann_return, ann_vol, sharpe) — all annualised.
+        (ann_return, ann_vol, sharpe)  -  all annualised.
     """
     r = np.dot(w, mu) * AF
     v = np.sqrt(w @ cov @ w) * np.sqrt(AF)
@@ -523,7 +523,7 @@ def _opt(objective, n, extra_constraints=None):
 def w_min_var(mu, cov):
     """Minimum Variance portfolio: minimise w'Σw subject to full-investment + cap.
 
-    Only the covariance matrix is needed — expected returns are not used,
+    Only the covariance matrix is needed  -  expected returns are not used,
     which makes this strategy less sensitive to estimation error than Max Sharpe.
     Zero weights are normal: the optimiser excludes high-variance assets.
     """
@@ -545,7 +545,7 @@ def w_inv_vol(rets_df):
     Lower-volatility assets receive higher weights so each position contributes
     roughly equal risk. Volatility is estimated from the expanding window in the
     backtest, so early estimates are noisy but improve as data accumulates.
-    No return forecasts are needed — only the per-asset volatility.
+    No return forecasts are needed  -  only the per-asset volatility.
     """
     vols = rets_df.std()
     iv = 1 / vols
@@ -562,7 +562,7 @@ def w_market_cap(tickers_csv: str) -> np.ndarray:
     NOTE: This function returns TODAY's market-cap weights. It is used only for
     (1) display in the Optimal Portfolio Allocations table and (2) as the active-
     share benchmark in full_metrics(). It is NOT used as starting weights in the
-    backtest — those are derived from historical prices to avoid look-ahead bias.
+    backtest  -  those are derived from historical prices to avoid look-ahead bias.
     Falls back to equal weight (cap=1.0) for any ticker that fails to load.
     Cached for 24 hours (ttl=86400) to limit API calls.
     """
@@ -588,7 +588,7 @@ def load_rf_series(start: str, end: str) -> pd.Series:
     when rates were near zero would systematically depress Sharpe estimates).
 
     At each rebalancing date the backtest calls rf_series.asof(rebal) which
-    returns the last known T-bill rate on or before that date — no look-ahead.
+    returns the last known T-bill rate on or before that date  -  no look-ahead.
     Falls back to the global RF constant if ^IRX data is unavailable.
     Cached for 1 hour (ttl=3600).
     """
@@ -611,7 +611,7 @@ def efficient_frontier_mc(mu, cov, n=500):
     (all weights positive, sum to 1). Each portfolio's (vol, return, Sharpe) is
     computed so the scatter cloud can be colour-coded by Sharpe ratio.
 
-    Note: these are NOT constrained by MAX_SINGLE_W — they represent the full
+    Note: these are NOT constrained by MAX_SINGLE_W  -  they represent the full
     theoretical feasible set for illustration. The optimised portfolios on the
     efficient frontier DO respect the 40% cap.
 
@@ -652,7 +652,7 @@ def backtest_styles(prices: pd.DataFrame,
         cost_hit = TO × cost_pct / 100
     applied as a return reduction on the first day of the holding period.
     Market Weight is exempt (true buy-and-hold, zero rebalancing turnover).
-    The first rebalancing date is treated as portfolio inception — no turnover
+    The first rebalancing date is treated as portfolio inception  -  no turnover
     is assumed at t=0 (cost only accrues from the second rebalancing onward).
     """
     rets = prices.pct_change().dropna()
@@ -690,7 +690,7 @@ def backtest_styles(prices: pd.DataFrame,
                 "Equal Weight":  w_equal(n),
                 # Min Variance: objective uses only cov, mu is ignored
                 "Min Variance":  w_min_var(mu, cov),
-                # Mean-Variance: uses hist.mean() as expected returns —
+                # Mean-Variance: uses hist.mean() as expected returns  - 
                 # no look-ahead, but sample means are noisy estimators.
                 # RF rate is the historically correct T-bill rate at rebal date.
                 "Mean-Variance": w_max_sharpe(mu, cov, rf=rf_t),
@@ -699,7 +699,7 @@ def backtest_styles(prices: pd.DataFrame,
                 "Risk Parity":   w_inv_vol(hist),
             }
         else:
-            # Too few observations — fall back to equal weight
+            # Too few observations  -  fall back to equal weight
             ew = w_equal(n)
             weights = {s: ew for s in style_names}
 
@@ -734,7 +734,7 @@ def backtest_styles(prices: pd.DataFrame,
     #   shares_i  ≈  current_mcap_i / current_price_i
     # Then the market-cap weight at the backtest start date is:
     #   w_i(t_0)  ∝  shares_i × price_i(t_0)
-    # This removes look-ahead bias — the starting weights reflect relative
+    # This removes look-ahead bias  -  the starting weights reflect relative
     # market caps on the first day of the backtest, not today.
     tickers_list   = rets.columns.tolist()
     mcw_today      = w_market_cap(",".join(tickers_list))       # today's normalised weights ∝ today's caps
@@ -805,7 +805,7 @@ def _layout(fig, title="", h=450, **kw):
 
 
 def chart_cumret(series_dict: dict, title="Cumulative Returns (rebased to 0%)") -> go.Figure:
-    # Professional Tailwind-based palette — readable on dark backgrounds
+    # Professional Tailwind-based palette  -  readable on dark backgrounds
     colors = [ACCENT, BLUE, GOLD, GREEN, "#8B5CF6", "#EC4899",
               "#F97316", "#14B8A6", "#A78BFA", "#94A3B8"]
     fig = go.Figure()
@@ -876,7 +876,7 @@ def chart_benchmark_comparison(port_r, bench_prices, label="Equal-Weight Portfol
     common_start = max(s.index[0] for s in valid.values())
     aligned = {n: s[s.index >= common_start] for n, s in valid.items()}
 
-    # chart_cumret will rebase each series to 0% — pass raw cumulative products
+    # chart_cumret will rebase each series to 0%  -  pass raw cumulative products
     return chart_cumret(aligned, "Portfolio vs Benchmarks (rebased to 0%)")
 
 
@@ -897,7 +897,7 @@ def chart_price_ta(ohlcv: pd.DataFrame, ticker: str) -> go.Figure:
         fig.add_trace(go.Scatter(x=ohlcv.index, y=band, name=name,
                                  line=dict(color="rgba(150,150,255,0.5)", dash="dot", width=1),
                                  showlegend=True), row=1, col=1)
-    # Dollar volume (shares × price) — immune to split-adjustment inflation.
+    # Dollar volume (shares × price)  -  immune to split-adjustment inflation.
     # yfinance auto_adjust multiplies historical share counts by the cumulative
     # split factor, making pre-split volume look enormous vs today. Dollar volume
     # cancels this out and is a more meaningful measure of daily liquidity.
@@ -909,7 +909,7 @@ def chart_price_ta(ohlcv: pd.DataFrame, ticker: str) -> go.Figure:
     fig.update_yaxes(tickprefix="$", tickformat=".2s", row=2, col=1)
     fig.update_layout(template=CHART_TEMPLATE,
                       paper_bgcolor=_BG, plot_bgcolor=_PLOT,
-                      title=dict(text=f"<b>{ticker} — Price & Volume</b>",
+                      title=dict(text=f"<b>{ticker}  -  Price & Volume</b>",
                                  font=dict(size=14, color="#E0E4EA", family=_SERIF)),
                       xaxis_rangeslider_visible=False, height=600,
                       font=dict(family=_FONT, color="#78909C"),
@@ -962,21 +962,21 @@ def chart_ef(mu, cov, tickers, user_weights=None, user_label="Your Portfolio") -
     r_ms, v_ms, _ = _port_stats(w_ms, mu.values, cov.values)
 
     # y_max: 98th-pct of random scatter OR the Mean-Variance return (whichever
-    # is larger) — ensures the orange marker is never clipped off the chart
+    # is larger)  -  ensures the orange marker is never clipped off the chart
     y_max = max(np.percentile(rets, 98) * 1.25, r_ms * 1.15)
     y_min = min(min(rets) * 1.1, 0)
 
     fig = go.Figure()
 
     # ── Scatter cloud (random portfolios) ────────────────────────────────────
-    # Sequential scale: dark navy (low Sharpe) → Bloomberg blue (high Sharpe).
+    # Sequential scale: dark navy (low Sharpe) -> Bloomberg blue (high Sharpe).
     # Gives the cloud depth and encodes information without competing with the
     # orange Mean-Variance and blue Min-Variance marker circles.
     fig.add_trace(go.Scatter(
         x=vols, y=rets, mode="markers",
         marker=dict(
             color=srs,
-            # Warm amber gradient: near-black (low Sharpe) → Bloomberg amber (high Sharpe)
+            # Warm amber gradient: near-black (low Sharpe) -> Bloomberg amber (high Sharpe)
             # Distinct from both the blue Min Variance and orange Mean-Variance markers
             colorscale=[[0.0, "#0A0800"], [0.5, "#7A4800"], [1.0, "#CC7000"]],
             reversescale=False,
@@ -1033,7 +1033,7 @@ def chart_ef(mu, cov, tickers, user_weights=None, user_label="Your Portfolio") -
 
     # ── Optimal portfolios (solid circles + direct text labels) ──────────────
     for label, r_opt, v_opt, w_opt, color in [
-        ("Min Variance",  r_mv, v_mv, w_mv, "#E0E4EA"),   # near-white — stands out from amber cloud
+        ("Min Variance",  r_mv, v_mv, w_mv, "#E0E4EA"),   # near-white  -  stands out from amber cloud
         ("Mean-Variance", r_ms, v_ms, w_ms, ACCENT),       # Bloomberg orange
     ]:
         alloc = "<br>".join(f"{t}: {wi:.1%}" for t, wi in zip(tickers, w_opt))
@@ -1048,7 +1048,7 @@ def chart_ef(mu, cov, tickers, user_weights=None, user_label="Your Portfolio") -
                            f"Return: {r_opt:.2%}<br><br>{alloc}<extra></extra>"),
         ))
 
-    # ── User's custom portfolio (gold diamond — only shown when Custom weights set) ──
+    # ── User's custom portfolio (gold diamond  -  only shown when Custom weights set) ──
     if user_weights is not None:
         r_u, v_u, _ = _port_stats(np.array(user_weights), mu.values, cov.values)
         if r_u <= y_max:
@@ -1100,7 +1100,7 @@ def chart_ef(mu, cov, tickers, user_weights=None, user_label="Your Portfolio") -
 def chart_styles_cumret(style_rets: dict) -> go.Figure:
     series = {s: (1 + r).cumprod() for s, r in style_rets.items() if not r.empty}
     colors_map = {
-        "Your Portfolio": "#E0E4EA",   # near-white — matches EF custom marker
+        "Your Portfolio": "#E0E4EA",   # near-white  -  matches EF custom marker
         "Equal Weight":   ACCENT,
         "Min Variance":   BLUE,
         "Mean-Variance":  GOLD,
@@ -1114,7 +1114,7 @@ def chart_styles_cumret(style_rets: dict) -> go.Figure:
         fig.add_trace(go.Scatter(x=rebased.index, y=rebased, name=name,
                                  line=dict(color=colors_map.get(name, "#fff"), width=2),
                                  hovertemplate="%{y:.2f}%<extra>" + name + "</extra>"))
-    return _layout(fig, "Portfolio Styles — Cumulative Return",
+    return _layout(fig, "Portfolio Styles  -  Cumulative Return",
                    yaxis_title="Return (%)")
 
 
@@ -1129,7 +1129,7 @@ def chart_dist(r: pd.Series, label: str) -> go.Figure:
     v = hist_var(r)
     fig.add_vline(x=-v, line=dict(color=GOLD, dash="dash"),
                   annotation_text="VaR 95%", annotation_position="top right")
-    return _layout(fig, f"{label} — Return Distribution",
+    return _layout(fig, f"{label}  -  Return Distribution",
                    xaxis_title="Daily Return", yaxis_title="Density", h=400)
 
 
@@ -1139,7 +1139,7 @@ def chart_dd(prices: pd.Series, label: str) -> go.Figure:
     fig.add_trace(go.Scatter(x=dd.index, y=dd, fill="tozeroy", name="Drawdown",
                              line=dict(color=RED, width=1.2),
                              fillcolor="rgba(255,75,75,0.18)"))
-    return _layout(fig, f"{label} — Drawdown (%)", yaxis_title="Drawdown (%)", h=340)
+    return _layout(fig, f"{label}  -  Drawdown (%)", yaxis_title="Drawdown (%)", h=340)
 
 
 def chart_rolling_var(r: pd.Series, label: str, w: int, c: float) -> go.Figure:
@@ -1149,14 +1149,14 @@ def chart_rolling_var(r: pd.Series, label: str, w: int, c: float) -> go.Figure:
                              line=dict(color=RED, width=1.5),
                              fillcolor="rgba(255,75,75,0.15)",
                              name=f"Rolling {c:.0%} VaR"))
-    return _layout(fig, f"{label} — Rolling {w}d Historical VaR ({c:.0%})",
+    return _layout(fig, f"{label}  -  Rolling {w}d Historical VaR ({c:.0%})",
                    yaxis_title="VaR (%)", h=360)
 
 
 def chart_mc(paths: np.ndarray, label: str, last_val: float) -> go.Figure:
     """Animated Monte Carlo chart with Plotly Play / Pause buttons.
 
-    Paths grow left-to-right when the user presses Play — all animation is
+    Paths grow left-to-right when the user presses Play  -  all animation is
     client-side (browser JS), so no Streamlit re-renders are needed.
 
     Architecture:
@@ -1221,7 +1221,7 @@ def chart_mc(paths: np.ndarray, label: str, last_val: float) -> go.Figure:
         paper_bgcolor=_BG, plot_bgcolor=_PLOT,
         height=500,
         title=dict(
-            text=f"<b>{label} — Monte Carlo ({n_days}d forecast)</b>",
+            text=f"<b>{label}  -  Monte Carlo ({n_days}d forecast)</b>",
             font=dict(size=14, color="#E0E4EA", family=_SERIF),
             pad=dict(b=10),
         ),
@@ -1333,12 +1333,12 @@ def chart_rolling_sharpe(r: pd.Series, label: str, w: int = 252) -> go.Figure:
         hovertemplate="%{y:.2f}<extra></extra>",
     ))
     fig.add_hline(y=0, line=dict(color=MUTED, dash="dash", width=1))
-    return _layout(fig, f"{label} — Rolling {w}d Sharpe Ratio",
+    return _layout(fig, f"{label}  -  Rolling {w}d Sharpe Ratio",
                    yaxis_title="Sharpe Ratio", h=340)
 
 
 def render_annual_returns(style_rets: dict) -> None:
-    """Year-by-year returns table — green for positive, red for negative."""
+    """Year-by-year returns table  -  green for positive, red for negative."""
     styles = [s for s, r in style_rets.items() if not r.empty]
     if not styles:
         return
@@ -1362,7 +1362,7 @@ def render_annual_returns(style_rets: dict) -> None:
         for y in years:
             v = ann[s].get(y)
             if v is None or np.isnan(v):
-                col, txt = "#546E7A", "—"
+                col, txt = "#546E7A", " - "
             elif v >= 0:
                 col, txt = "#00C853", f"+{v:.1%}"
             else:
@@ -1383,7 +1383,7 @@ def render_annual_returns(style_rets: dict) -> None:
 
 def chart_corr_heatmap(prices: pd.DataFrame) -> go.Figure:
     corr = prices.pct_change().dropna().corr()
-    # Diverging scale: dark burgundy (negative) → steel grey (zero) → deep navy (positive)
+    # Diverging scale: dark burgundy (negative) -> steel grey (zero) -> deep navy (positive)
     bbg_div = [[0.0, "#B71C1C"], [0.5, "#37474F"], [1.0, "#FF8C00"]]
     fig = px.imshow(corr, text_auto=".2f", color_continuous_scale=bbg_div,
                     zmin=-1, zmax=1, title="Pairwise Return Correlation")
@@ -1416,7 +1416,7 @@ html, body, [class*="css"], .stApp, .stMarkdown, p, span, label, li, td, th {
     font-family: 'IBM Plex Serif', Georgia, serif !important;
 }
 
-/* ── Typography — headings use IBM Plex Serif for gravitas ──────────────── */
+/* ── Typography  -  headings use IBM Plex Serif for gravitas ──────────────── */
 h1 {
     font-family: 'IBM Plex Serif', Georgia, serif !important;
     font-size: 2rem !important; font-weight: 700 !important;
@@ -1428,7 +1428,7 @@ h2, h3 {
     color: #C8CDD6 !important;
 }
 
-/* ── KPI metric cards — Bloomberg terminal style ─────────────────────────── */
+/* ── KPI metric cards  -  Bloomberg terminal style ─────────────────────────── */
 .mcard {
     background: #111519;
     border-top: 1px solid #263238;
@@ -1456,7 +1456,7 @@ h2, h3 {
 .mpos { color: #00C853 !important; }
 .mneg { color: #E53935 !important; }
 
-/* ── Sidebar collapse button — hide raw icon text fallback ───────────────── */
+/* ── Sidebar collapse button  -  hide raw icon text fallback ───────────────── */
 [data-testid="stSidebarCollapsedControl"],
 [data-testid="stSidebarCollapseButton"] { overflow: hidden; }
 [data-testid="stSidebarCollapsedControl"] span,
@@ -1480,7 +1480,7 @@ h2, h3 {
     background-color: #E07800 !important;
 }
 
-/* ── Tabs — Bloomberg function-key style ─────────────────────────────────── */
+/* ── Tabs  -  Bloomberg function-key style ─────────────────────────────────── */
 .stTabs [data-baseweb="tab-list"] {
     border-bottom: 1px solid #1C2128 !important;
     gap: 2px;
@@ -1523,7 +1523,7 @@ hr { border-color: #1C2128 !important; opacity: 1 !important; }
 
 
 def render_table(df: pd.DataFrame) -> None:
-    """Bloomberg-styled static HTML table — no menus, no dropdowns."""
+    """Bloomberg-styled static HTML table  -  no menus, no dropdowns."""
     th_style = (
         "background:#1C2128;color:#E0E4EA;padding:9px 14px;"
         "text-align:left;border-bottom:2px solid #263238;"
@@ -1542,7 +1542,7 @@ def render_table(df: pd.DataFrame) -> None:
     header = "".join(f'<th style="{th_style}">{c}</th>' for c in df.columns)
     rows   = "".join(
         f'<tr><td style="{idx_style}">{idx}</td>'
-        + "".join(f'<td style="{td_style}">{str(v).replace("—", "-")}</td>' for v in row)
+        + "".join(f'<td style="{td_style}">{str(v).replace(" - ", "-")}</td>' for v in row)
         + "</tr>"
         for idx, row in df.iterrows()
     )
@@ -1612,7 +1612,7 @@ with st.sidebar:
             )
         total_pct = sum(custom_pcts.values())
         if abs(total_pct - 100.0) > 1.0:
-            st.warning(f"Total: {total_pct:.1f}% — will be auto-normalised to 100%")
+            st.warning(f"Total: {total_pct:.1f}%  -  will be auto-normalised to 100%")
         else:
             st.success(f"Total: {total_pct:.1f}%")
 
@@ -1865,13 +1865,13 @@ with tab_overview:
     st.divider()
     st.subheader("Methodology")
     st.markdown(r"""
-**Returns** — Daily simple returns, compounded to cumulative and rebased to 0% at period start.
+**Returns**  -  Daily simple returns, compounded to cumulative and rebased to 0% at period start.
 Portfolio return is the weighted sum of stock returns: $r_p = \sum_i w_i r_i$.
 
-**Concentration (HHI)** — $\text{HHI} = \sum w_i^2$; Effective N $= 1/\text{HHI}$.
+**Concentration (HHI)**  -  $\text{HHI} = \sum w_i^2$; Effective N $= 1/\text{HHI}$.
 Higher HHI means more concentration; Effective N is the equivalent number of equal-weight positions.
 
-**Sector exposure** — Active weight = portfolio sector weight minus approximate S&P 500 GICS weight. Positive = overweight vs the index.
+**Sector exposure**  -  Active weight = portfolio sector weight minus approximate S&P 500 GICS weight. Positive = overweight vs the index.
 
 **Benchmark metrics**
 
@@ -1902,14 +1902,14 @@ with tab_tech:
     st.divider()
     st.subheader("Methodology")
     st.markdown(r"""
-**MA 20 / 50** — Simple moving averages over 20 and 50 days. Price above MA = bullish bias; below = bearish.
+**MA 20 / 50**  -  Simple moving averages over 20 and 50 days. Price above MA = bullish bias; below = bearish.
 
-**Bollinger Bands** — MA20 ± 2 standard deviations. Bands widen in high-volatility periods; prices near the edges signal statistically extended moves.
+**Bollinger Bands**  -  MA20 ± 2 standard deviations. Bands widen in high-volatility periods; prices near the edges signal statistically extended moves.
 
-**RSI (14d)** — Momentum oscillator on a 0–100 scale. Above 70 = overbought; below 30 = oversold.
+**RSI (14d)**  -  Momentum oscillator on a 0–100 scale. Above 70 = overbought; below 30 = oversold.
 $$\text{RSI} = 100 - \frac{100}{1 + \bar{G}_{14}/\bar{L}_{14}}$$
 
-**MACD (12/26/9)** — Difference between a 12-day and 26-day EMA. The 9-day signal line smooths it; crossovers indicate momentum shifts.
+**MACD (12/26/9)**  -  Difference between a 12-day and 26-day EMA. The 9-day signal line smooths it; crossovers indicate momentum shifts.
 
 *Technical indicators are descriptive only and do not predict future returns.*
 """)
@@ -1954,13 +1954,13 @@ with tab_corr:
     st.divider()
     st.subheader("Methodology")
     st.markdown(r"""
-**Pearson correlation** — Measures linear co-movement of daily returns, ranging from −1 to +1.
+**Pearson correlation**  -  Measures linear co-movement of daily returns, ranging from −1 to +1.
 $$\rho_{i,j} = \frac{\text{Cov}(r_i, r_j)}{\sigma_i \cdot \sigma_j}$$
 High correlation between two holdings reduces diversification benefit. Correlations tend to spike toward +1 during market stress, precisely when diversification matters most.
 
-**Rolling correlation** — Shows how the pairwise relationship changes through time. A pair that looks uncorrelated over the full period may have been tightly correlated during drawdowns.
+**Rolling correlation**  -  Shows how the pairwise relationship changes through time. A pair that looks uncorrelated over the full period may have been tightly correlated during drawdowns.
 
-**Return scatter** — Each point is one trading day. The OLS trendline fits $r_j = \alpha + \beta r_i$; wider scatter around the line means more residual diversification benefit.
+**Return scatter**  -  Each point is one trading day. The OLS trendline fits $r_j = \alpha + \beta r_i$; wider scatter around the line means more residual diversification benefit.
 """)
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1975,7 +1975,7 @@ with tab_port:
         cov = rets_df.cov()
 
         # ── Portfolio styles backtest ─────────────────────────────────────────
-        st.subheader("Portfolio Styles — Backtested Performance")
+        st.subheader("Portfolio Styles  -  Backtested Performance")
 
         cost_pct = st.slider(
             "Monthly rebalancing costs per unit of turnover (%)",
@@ -1988,7 +1988,7 @@ with tab_port:
             style_rets = backtest_styles(prices, rf_series=rf_hist, cost_pct=cost_pct)
         # Prepend the user's portfolio so it appears first in the legend
         style_rets = {"Your Portfolio": (rets_df * user_w).sum(axis=1)} | style_rets
-        # In Equal Weight mode Your Portfolio == Equal Weight — drop the duplicate
+        # In Equal Weight mode Your Portfolio == Equal Weight  -  drop the duplicate
         if weight_mode != "Custom":
             style_rets.pop("Equal Weight", None)
 
@@ -2061,7 +2061,7 @@ All strategies are constrained to full investment, long-only, and a 40% single-s
 The backtest is walk-forward: at each monthly rebalancing date only data up to that date is used.
 Data starts from **{_common_start.strftime('%d %b %Y')}** (earliest common date across all selected tickers).
 
-**Transaction costs** — The slider above applies a one-way cost per unit of portfolio turnover at each
+**Transaction costs**  -  The slider above applies a one-way cost per unit of portfolio turnover at each
 monthly rebalancing. Strategies that change their weights substantially from month to month (such as
 Mean-Variance) incur higher costs than low-turnover strategies (such as Risk Parity or Equal Weight).
 Market Weight (buy-and-hold) and *Your Portfolio* are shown without cost. At rebalancing date $t$, the one-way turnover is:
@@ -2084,7 +2084,7 @@ Market Weight (buy-and-hold) and *Your Portfolio* are shown without cost. At reb
 
         st.markdown("**2. Minimum Variance**")
         st.latex(r"\min_w \; w^\top \Sigma\, w \quad \text{s.t.} \; \mathbf{1}^\top w=1,\; 0\le w_i\le 0.4")
-        st.markdown("Only the covariance matrix $\\Sigma$ is needed — no return forecasts. Zero-weight allocations are normal.")
+        st.markdown("Only the covariance matrix $\\Sigma$ is needed  -  no return forecasts. Zero-weight allocations are normal.")
 
         st.markdown("**3. Mean-Variance (Max Sharpe)**")
         st.latex(r"\max_w \; \frac{w^\top\mu - r_f}{\sqrt{w^\top\Sigma\, w}} \quad \text{s.t.} \; \mathbf{1}^\top w=1,\; 0\le w_i\le 0.4")
@@ -2101,7 +2101,7 @@ Market Weight (buy-and-hold) and *Your Portfolio* are shown without cost. At reb
         st.latex(r"w_i(0) = \frac{\hat{S}_i \cdot P_i(t_0)}{\sum_j \hat{S}_j \cdot P_j(t_0)}, \quad \hat{S}_i = \frac{\mathrm{MCap}_i^{\,\text{today}}}{P_i^{\,\text{today}}}, \qquad V(t)=\sum_i w_i(0)\prod_{s=1}^t(1+r_i^s)")
         st.markdown("Held without rebalancing: price appreciation naturally keeps weights at market-cap proportions. "
                     "Starting weights are derived from implied shares outstanding "
-                    "(current market cap ÷ current price) multiplied by the stock price on the first day of the backtest — "
+                    "(current market cap ÷ current price) multiplied by the stock price on the first day of the backtest  -  "
                     "so the initial allocation reflects historical market caps, not today's.")
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -2115,7 +2115,7 @@ with tab_risk:
         key="var_conf",
         help="Percentile used for all VaR / CVaR calculations in this tab",
     )
-    st.subheader(f"Portfolio Risk — {port_label}")
+    st.subheader(f"Portfolio Risk  -  {port_label}")
 
     # ── Portfolio headline metrics ────────────────────────────────────────────
     c1, c2, c3, c4 = st.columns(4)
@@ -2196,7 +2196,7 @@ with tab_risk:
     fig_th.add_vline(x=float(port_val.iloc[-1]),
                      line=dict(color="white", dash="dash"),
                      annotation_text="Current")
-    _layout(fig_th, f"{port_label} — Terminal Value Distribution ({mc_days}d)",
+    _layout(fig_th, f"{port_label}  -  Terminal Value Distribution ({mc_days}d)",
             xaxis_title="Portfolio Value", yaxis_title="Frequency", h=360)
     st.plotly_chart(fig_th, use_container_width=True)
 
@@ -2225,32 +2225,32 @@ with tab_risk:
                                    marker_color=ACCENT, opacity=0.75))
     fig_th2.add_vline(x=last_px, line=dict(color="white", dash="dash"),
                       annotation_text="Current price")
-    _layout(fig_th2, f"{mc_t} — Terminal Price Distribution ({mc_days}d)",
+    _layout(fig_th2, f"{mc_t}  -  Terminal Price Distribution ({mc_days}d)",
             xaxis_title="Price (USD)", yaxis_title="Frequency", h=360)
     st.plotly_chart(fig_th2, use_container_width=True)
 
     st.divider()
     st.subheader("Methodology")
     st.markdown(rf"""
-**VaR ({confidence:.0%})** — The loss level exceeded on only {1-confidence:.0%} of trading days.
-- *Historical*: read directly from the return distribution — $\text{{VaR}} = -\text{{Percentile}}(r,\, {(1-confidence)*100:.0f}\%)$
-- *Parametric*: assumes normally distributed returns — $\text{{VaR}} = -(\mu + z_{{1-\alpha}}\,\sigma)$
+**VaR ({confidence:.0%})**  -  The loss level exceeded on only {1-confidence:.0%} of trading days.
+- *Historical*: read directly from the return distribution  -  $\text{{VaR}} = -\text{{Percentile}}(r,\, {(1-confidence)*100:.0f}\%)$
+- *Parametric*: assumes normally distributed returns  -  $\text{{VaR}} = -(\mu + z_{{1-\alpha}}\,\sigma)$
 
-**CVaR** — Average loss on days VaR is breached. Always $\geq$ VaR; more sensitive to tail events.
+**CVaR**  -  Average loss on days VaR is breached. Always $\geq$ VaR; more sensitive to tail events.
 
-**Drawdown** — Decline from the most recent peak: $\text{{DD}}_t = (P_t - \max_{{s\leq t}} P_s)\,/\,\max_{{s\leq t}} P_s$.
+**Drawdown**  -  Decline from the most recent peak: $\text{{DD}}_t = (P_t - \max_{{s\leq t}} P_s)\,/\,\max_{{s\leq t}} P_s$.
 
-**Risk Contribution** — Each stock's share of total portfolio variance: $\text{{RC}}_i = w_i\,(\Sigma w)_i\,/\,w^\top\Sigma w$. A stock that is a small position but dominates risk is a candidate for trimming; one that is a large position but low-risk adds diversification efficiently.
+**Risk Contribution**  -  Each stock's share of total portfolio variance: $\text{{RC}}_i = w_i\,(\Sigma w)_i\,/\,w^\top\Sigma w$. A stock that is a small position but dominates risk is a candidate for trimming; one that is a large position but low-risk adds diversification efficiently.
 
-**Rolling VaR** — VaR recomputed over a sliding window. Spikes indicate periods of elevated risk.
+**Rolling VaR**  -  VaR recomputed over a sliding window. Spikes indicate periods of elevated risk.
 
-**Rolling Sharpe** — Annualised Sharpe ratio over a trailing 252-day window. Falls below zero when the portfolio underperforms the risk-free rate on a risk-adjusted basis.
+**Rolling Sharpe**  -  Annualised Sharpe ratio over a trailing 252-day window. Falls below zero when the portfolio underperforms the risk-free rate on a risk-adjusted basis.
 
-**Monte Carlo (GBM)** — Simulates future price paths using Geometric Brownian Motion with zero drift:
+**Monte Carlo (GBM)**  -  Simulates future price paths using Geometric Brownian Motion with zero drift:
 $$P_t = P_{{t-1}}\cdot e^{{\varepsilon_t}},\qquad \varepsilon_t\sim\mathcal{{N}}(0,\,\hat{{\sigma}})$$
 Zero drift is used instead of historical mean returns to avoid extrapolating a bull-market bias into the forecast. The fan chart shows the 10th–90th percentile range of simulated paths.
 
-**P(loss > 15%)** — Share of simulated paths ending more than 15% below today's value. More informative than P(value > today), which is upward-biased by the log-normal distribution.
+**P(loss > 15%)**  -  Share of simulated paths ending more than 15% below today's value. More informative than P(value > today), which is upward-biased by the log-normal distribution.
 
 *Limitations: GBM assumes constant volatility, normal shocks, and independent daily returns. Real markets exhibit volatility clustering, fat tails, and serial correlation.*
 """)
