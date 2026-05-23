@@ -2138,7 +2138,6 @@ with tab_risk:
 
     # ── Risk contribution ─────────────────────────────────────────────────────
     st.subheader("Risk Contribution per Stock")
-    st.caption("How much of total portfolio variance each position contributes, vs its weight.")
     st.plotly_chart(chart_risk_contribution(user_w, rets_df.cov(), avail),
                     use_container_width=True)
 
