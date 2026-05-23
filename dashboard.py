@@ -2131,7 +2131,6 @@ with tab_risk:
     st.plotly_chart(chart_rolling_var(port_r, port_label, var_win, confidence),
                     use_container_width=True)
 
-    st.subheader("Rolling Sharpe Ratio")
     st.plotly_chart(chart_rolling_sharpe(port_r, port_label),
                     use_container_width=True)
 
