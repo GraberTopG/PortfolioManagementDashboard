@@ -203,6 +203,13 @@ def chart_rsi_macd(prices: pd.Series, ticker: str) -> go.Figure:
 
 
 def chart_ef(mu, cov, tickers, user_weights=None, user_label="Your Portfolio") -> go.Figure:
+    """Efficient Frontier with Play/Pause animated scatter cloud.
+
+    Only the random-portfolio scatter (trace 0) is animated - it builds up in
+    ~60 batches when Play is pressed. The CML, optimal-portfolio markers, and
+    individual stock dots are always visible as context while the feasible-set
+    cloud reveals itself around them (~3-second animation at 50 ms/frame).
+    """
     vols, rets, srs, wts = efficient_frontier_mc(mu, cov, n=600)
     hover = ["<br>".join(f"{t}: {w:.1%}" for t, w in zip(tickers, ws)) for ws in wts]
 
@@ -212,38 +219,36 @@ def chart_ef(mu, cov, tickers, user_weights=None, user_label="Your Portfolio") -
     w_ms = w_max_sharpe(mu, cov)
     r_ms, v_ms, _ = _port_stats(w_ms, mu.values, cov.values)
 
-    # y_max: 98th-pct of random scatter OR the Mean-Variance return (whichever
-    # is larger)  -  ensures the orange marker is never clipped off the chart
     y_max = max(np.percentile(rets, 98) * 1.25, r_ms * 1.15)
     y_min = min(min(rets) * 1.1, 0)
 
+    # Animation: ~60 frames, each batch adds ~10 dots to the scatter cloud
+    n_total = len(vols)
+    batch   = max(1, n_total // 60)
+    frame_ends = list(range(batch, n_total + 1, batch))
+    if not frame_ends or frame_ends[-1] < n_total:
+        frame_ends.append(n_total)
+
+    _cs   = [[0.0, "#0A0800"], [0.5, "#7A4800"], [1.0, "#CC7000"]]  # amber gradient
+    _cbar = dict(title="Sharpe", thickness=10, len=0.55, tickformat=".1f",
+                 tickfont=dict(color=_TICK, family=_FONT),
+                 title_font=dict(color=_TICK, family=_FONT))
+
     fig = go.Figure()
 
-    # ── Scatter cloud (random portfolios) ────────────────────────────────────
-    # Sequential scale: dark navy (low Sharpe) -> Bloomberg blue (high Sharpe).
-    # Gives the cloud depth and encodes information without competing with the
-    # orange Mean-Variance and blue Min-Variance marker circles.
+    # ── Trace 0: scatter cloud (animated) ────────────────────────────────────
     fig.add_trace(go.Scatter(
-        x=vols, y=rets, mode="markers",
-        marker=dict(
-            color=srs,
-            # Warm amber gradient: near-black (low Sharpe) -> Bloomberg amber (high Sharpe)
-            # Distinct from both the blue Min Variance and orange Mean-Variance markers
-            colorscale=[[0.0, "#0A0800"], [0.5, "#7A4800"], [1.0, "#CC7000"]],
-            reversescale=False,
-            size=5, opacity=0.75,
-            colorbar=dict(title="Sharpe", thickness=10, len=0.55,
-                          tickformat=".1f",
-                          tickfont=dict(color=_TICK, family=_FONT),
-                          title_font=dict(color=_TICK, family=_FONT)),
-        ),
-        text=hover,
+        x=list(vols[:batch]), y=list(rets[:batch]),
+        mode="markers",
+        marker=dict(color=list(srs[:batch]), colorscale=_cs,
+                    reversescale=False, size=5, opacity=0.75, colorbar=_cbar),
+        text=hover[:batch],
         hovertemplate="Vol: %{x:.2%}<br>Return: %{y:.2%}<br>%{text}"
                       "<extra>Random Portfolio</extra>",
         name="Random Portfolios",
     ))
 
-    # ── Capital Market Line (subtle) ──────────────────────────────────────────
+    # ── Static traces: CML, Rf, individual stocks, optimal portfolios ─────────
     slope = (r_ms - RF) / v_ms
     cml_x = [0, max(vols) * 1.05]
     cml_y = [RF, RF + slope * cml_x[1]]
@@ -252,8 +257,6 @@ def chart_ef(mu, cov, tickers, user_weights=None, user_label="Your Portfolio") -
         line=dict(color="rgba(255,255,255,0.25)", dash="dot", width=1.5),
         name="Capital Market Line", hoverinfo="skip",
     ))
-
-    # ── Risk-free rate dot ────────────────────────────────────────────────────
     fig.add_trace(go.Scatter(
         x=[0], y=[RF], mode="markers+text",
         marker=dict(size=8, color=MUTED),
@@ -262,15 +265,12 @@ def chart_ef(mu, cov, tickers, user_weights=None, user_label="Your Portfolio") -
         showlegend=False,
         hovertemplate=f"Risk-Free Rate: {RF:.2%}<extra></extra>",
     ))
-
-    # ── Individual stocks (only those within chart bounds) ────────────────────
     for t in tickers:
-        idx  = list(tickers).index(t)
-        sv   = np.sqrt(cov.iloc[idx, idx]) * np.sqrt(AF)
-        rv   = mu.iloc[idx] * AF
-        if rv > y_max:          # skip extreme outliers
+        idx = list(tickers).index(t)
+        sv  = np.sqrt(cov.iloc[idx, idx]) * np.sqrt(AF)
+        rv  = mu.iloc[idx] * AF
+        if rv > y_max:
             continue
-        alloc_t = f"Vol: {sv:.2%}  |  Return: {rv:.2%}"
         fig.add_trace(go.Scatter(
             x=[sv], y=[rv], mode="markers+text",
             marker=dict(symbol="circle", size=8,
@@ -279,27 +279,23 @@ def chart_ef(mu, cov, tickers, user_weights=None, user_label="Your Portfolio") -
             text=[t], textposition="top center",
             textfont=dict(size=9, color="rgba(255,255,255,0.65)"),
             showlegend=False,
-            hovertemplate=f"<b>{t}</b><br>{alloc_t}<extra></extra>",
+            hovertemplate=f"<b>{t}</b><br>Vol: {sv:.2%} | Return: {rv:.2%}<extra></extra>",
         ))
-
-    # ── Optimal portfolios (solid circles + direct text labels) ──────────────
-    for label, r_opt, v_opt, w_opt, color in [
-        ("Min Variance",  r_mv, v_mv, w_mv, "#E0E4EA"),   # near-white  -  stands out from amber cloud
-        ("Mean-Variance", r_ms, v_ms, w_ms, ACCENT),       # Bloomberg orange
+    for lbl, r_opt, v_opt, w_opt, color in [
+        ("Min Variance",  r_mv, v_mv, w_mv, "#E0E4EA"),
+        ("Mean-Variance", r_ms, v_ms, w_ms, ACCENT),
     ]:
         alloc = "<br>".join(f"{t}: {wi:.1%}" for t, wi in zip(tickers, w_opt))
         fig.add_trace(go.Scatter(
             x=[v_opt], y=[r_opt], mode="markers+text",
             marker=dict(symbol="circle", size=10, color=color,
                         line=dict(color="white", width=1)),
-            text=[label], textposition="top right",
+            text=[lbl], textposition="top right",
             textfont=dict(size=10, color=color),
-            name=label,
-            hovertemplate=(f"<b>{label}</b><br>Vol: {v_opt:.2%}<br>"
+            name=lbl,
+            hovertemplate=(f"<b>{lbl}</b><br>Vol: {v_opt:.2%}<br>"
                            f"Return: {r_opt:.2%}<br><br>{alloc}<extra></extra>"),
         ))
-
-    # ── User's custom portfolio (gold diamond  -  only shown when Custom weights set) ──
     if user_weights is not None:
         r_u, v_u, _ = _port_stats(np.array(user_weights), mu.values, cov.values)
         if r_u <= y_max:
@@ -315,6 +311,22 @@ def chart_ef(mu, cov, tickers, user_weights=None, user_label="Your Portfolio") -
                                f"Return: {r_u:.2%}<br><br>{alloc_u}<extra></extra>"),
             ))
 
+    # ── Animation frames (only trace 0 updated per frame) ────────────────────
+    fig.frames = [
+        go.Frame(
+            data=[go.Scatter(
+                x=list(vols[:k]), y=list(rets[:k]),
+                marker=dict(color=list(srs[:k]), colorscale=_cs,
+                            reversescale=False, size=5, opacity=0.75,
+                            colorbar=_cbar),
+                text=hover[:k],
+            )],
+            name=str(k),
+        )
+        for k in frame_ends
+    ]
+
+    # ── Layout ────────────────────────────────────────────────────────────────
     fig.update_layout(
         template=CHART_TEMPLATE,
         paper_bgcolor=_BG, plot_bgcolor=_PLOT,
@@ -334,8 +346,40 @@ def chart_ef(mu, cov, tickers, user_weights=None, user_label="Your Portfolio") -
             text="Each dot represents one randomly weighted portfolio.",
             align="right", font=dict(size=10, color=_TICK, family=_MONO),
         )],
+        updatemenus=[dict(
+            type="buttons",
+            showactive=False,
+            direction="left",
+            x=0.0, xanchor="left",
+            y=1.10, yanchor="top",
+            pad=dict(r=8, t=0),
+            bgcolor="#111519",
+            bordercolor=ACCENT,
+            borderwidth=1,
+            font=dict(color=ACCENT, family=_MONO, size=12),
+            buttons=[
+                dict(
+                    label="▶  Play",
+                    method="animate",
+                    args=[None, dict(
+                        frame=dict(duration=50, redraw=True),
+                        fromcurrent=True,
+                        transition=dict(duration=0),
+                        mode="immediate",
+                    )],
+                ),
+                dict(
+                    label="⏸  Pause",
+                    method="animate",
+                    args=[[None], dict(
+                        frame=dict(duration=0, redraw=False),
+                        mode="immediate",
+                        transition=dict(duration=0),
+                    )],
+                ),
+            ],
+        )],
     )
-    # Fix axes separately to avoid deprecated titlefont key
     fig.update_xaxes(title_text="Annualised Volatility", tickformat=".0%",
                      gridcolor=_GRID, linecolor=_AXIS,
                      tickfont=dict(color=_TICK, family=_MONO),

@@ -700,7 +700,6 @@ with tab_port:
         st.divider()
 
         # ── Efficient Frontier ────────────────────────────────────────────────
-        st.subheader("Efficient Frontier")
         with st.spinner("Simulating portfolios…"):
             _uw = user_w if weight_mode == "Custom" else None
             st.plotly_chart(chart_ef(mu, cov, avail, user_weights=_uw,
