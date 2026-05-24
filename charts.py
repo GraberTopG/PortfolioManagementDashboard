@@ -331,8 +331,6 @@ def chart_ef(mu, cov, tickers, user_weights=None, user_label="Your Portfolio") -
         template=CHART_TEMPLATE,
         paper_bgcolor=_BG, plot_bgcolor=_PLOT,
         height=580,
-        title=dict(text="<b>Efficient Frontier</b>",
-                   font=dict(size=14, color="#E0E4EA", family=_SERIF)),
         font=dict(family=_FONT, color="#78909C"),
         legend=dict(orientation="v", yanchor="top", y=0.98,
                     xanchor="left", x=0.01,
