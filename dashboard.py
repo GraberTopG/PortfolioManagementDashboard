@@ -237,7 +237,7 @@ hr { border-color: #1C2128 !important; opacity: 1 !important; }
 
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 with st.sidebar:
-    st.title("US Large Cap Long Only Portfolio Dashboard")
+    st.markdown("**US Large Cap Long Only**  \nPortfolio Dashboard")
     st.caption("Programming with Advanced Computer Languages")
     st.divider()
     st.markdown("**Select Portfolio Tickers** (max 10)")
