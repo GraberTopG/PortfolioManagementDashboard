@@ -7,6 +7,7 @@ All yfinance calls are decorated with @st.cache_data to avoid redundant
 network requests during interactive Streamlit sessions.
 """
 
+import concurrent.futures
 import numpy as np
 import pandas as pd
 import yfinance as yf
@@ -19,16 +20,32 @@ from analytics import w_equal, w_min_var, w_max_sharpe, w_inv_vol
 #  DATA LAYER   -   Yahoo Finance (yfinance), no API key required
 # ══════════════════════════════════════════════════════════════════════════════
 
+_YF_TIMEOUT = 25  # seconds before giving up on a Yahoo Finance request
+
+
+def _download_with_timeout(*args, timeout=_YF_TIMEOUT, **kwargs) -> pd.DataFrame:
+    """Run yf.download() in a thread so we can enforce a hard timeout.
+
+    Yahoo Finance occasionally hangs indefinitely (rate-limit retries, DNS
+    issues) on cloud hosts.  Without this wrapper the Streamlit app would
+    show an infinite loading spinner.
+    """
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
+        future = ex.submit(yf.download, *args, **kwargs)
+        try:
+            return future.result(timeout=timeout)
+        except concurrent.futures.TimeoutError:
+            return pd.DataFrame()
+        except Exception:
+            return pd.DataFrame()
+
+
 @st.cache_data(ttl=3600, show_spinner=False)
 def _yf_close(tickers_csv: str, start: str, end: str) -> pd.DataFrame:
     """Batch-download adjusted close prices for multiple tickers in one call."""
     tickers = [t.strip() for t in tickers_csv.split(",") if t.strip()]
-    try:
-        raw = yf.download(tickers, start=start, end=end,
-                          auto_adjust=True, progress=False)
-    except Exception as e:
-        st.warning(f"Download failed: {e}")
-        return pd.DataFrame()
+    raw = _download_with_timeout(tickers, start=start, end=end,
+                                 auto_adjust=True, progress=False)
     if raw.empty:
         return pd.DataFrame()
     if isinstance(raw.columns, pd.MultiIndex):
@@ -40,11 +57,8 @@ def _yf_close(tickers_csv: str, start: str, end: str) -> pd.DataFrame:
 @st.cache_data(ttl=3600, show_spinner=False)
 def _yf_ohlcv(ticker: str, start: str, end: str) -> pd.DataFrame:
     """Download full OHLCV for a single ticker (Technical Analysis tab)."""
-    try:
-        raw = yf.download(ticker, start=start, end=end,
-                          auto_adjust=True, progress=False)
-    except Exception:
-        return pd.DataFrame()
+    raw = _download_with_timeout(ticker, start=start, end=end,
+                                 auto_adjust=True, progress=False)
     if raw.empty:
         return pd.DataFrame()
     if isinstance(raw.columns, pd.MultiIndex):
